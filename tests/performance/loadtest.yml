@@ -1,0 +1,23 @@
+config:
+  target: "http://localhost:8080"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+
+  payload:
+    path: "query_payload.csv"
+    fields:
+      - query
+
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "Concurrent Semantic Query Test"
+    flow:
+      - post:
+          url: "/api/query"
+          json:
+            query: "{{ query }}"
+            topK: 5

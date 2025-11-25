@@ -1,0 +1,11 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus                       # Datasource name visible inside Grafana dashboards
+    type: prometheus                       # Prometheus integration
+    access: proxy                          # Grafana proxies queries → avoids CORS issues
+    orgId: 1                               # Default organization
+    uid: prometheus                        # Used by dashboards to reference this datasource
+    url: http://prometheus:9090            # Prometheus service URL inside Docker/AWS network
+    isDefault: true                        # Sets Prometheus as the default datasource
+    editable: true                         # Allows changing connection details in Grafana UI

@@ -1,0 +1,17 @@
+// src/server.js
+
+require("dotenv").config();
+const { logger } = require("./utils/logger");
+
+require("./config/redisClient");
+
+logger.info("Starting BullMQ worker");
+require("./config/aiQueue");
+
+const app = require("./app");
+
+const PORT = process.env.PORT || 8080;
+
+app.listen(PORT, () => {
+  logger.info(`Server listening on port ${PORT}`);
+});

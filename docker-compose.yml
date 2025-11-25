@@ -1,0 +1,106 @@
+version: "3.9"
+
+services:
+  # ----------------------------------------
+  # Redis (local dev cache)
+  # ----------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  # ----------------------------------------
+  # Redis Exporter (Prometheus metrics)
+  # ----------------------------------------
+  redis-exporter:
+    image: oliver006/redis_exporter
+    container_name: redis-exporter
+    command: ["--redis.addr=redis:6379"]
+    ports:
+      - "9121:9121"
+    depends_on:
+      - redis
+
+  # ----------------------------------------
+  # Node Exporter (system metrics)
+  # Runs on the host so Prometheus can scrape CPU/RAM/Disk
+  # ----------------------------------------
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    pid: "host"
+    network_mode: "host"
+    restart: unless-stopped
+    command:
+      - '--path.rootfs=/host'
+    volumes:
+      - '/:/host:ro,rslave'
+
+  # ----------------------------------------
+  # Qdrant Exporter (vector DB metrics)
+  # Placeholder image; replace when using Qdrant officially
+  # ----------------------------------------
+  qdrant-exporter:
+    image: ghcr.io/aperium/qdrant-exporter:latest
+    container_name: qdrant-exporter
+    ports:
+      - "9867:9867"
+    restart: unless-stopped
+
+  # ----------------------------------------
+  # Pushgateway (batch jobs, cron jobs)
+  # ----------------------------------------
+  pushgateway:
+    image: prom/pushgateway
+    container_name: pushgateway
+    ports:
+      - "9091:9091"
+
+  # ----------------------------------------
+  # CloudWatch Agent (AWS metrics → Prometheus)
+  # ----------------------------------------
+  cloudwatch-agent:
+    image: amazon/cloudwatch-agent:latest
+    container_name: cloudwatch-agent
+    ports:
+      - "9106:9106"
+
+  # ----------------------------------------
+  # Prometheus (Metrics backend)
+  # ----------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    # Required for Linux so Prometheus can reach the host backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - redis
+      - redis-exporter
+      - node-exporter
+      - qdrant-exporter
+      - cloudwatch-agent
+      - pushgateway
+
+  # ----------------------------------------
+  # Grafana (Dashboards UI)
+  # ----------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    depends_on:
+      - prometheus

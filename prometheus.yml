@@ -1,0 +1,112 @@
+# ==============================
+# Prometheus Production Config
+# Supports local dev + AWS + exporters + service discovery
+# ==============================
+
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+  scrape_timeout: 8s
+
+
+# =====================================================
+# Scrape Jobs
+# =====================================================
+scrape_configs:
+
+  # -----------------------------------------------------
+  # 1. Node.js Backend (GetFit_AI API)
+  # Local: backend runs on host machine
+  # AWS: Replace target with ECS/EKS/EC2-discovered endpoint
+  # -----------------------------------------------------
+  - job_name: "getfit_ai_backend"
+    metrics_path: "/api/metrics"
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+        # On Linux Docker: Prometheus needs extra_hosts (already added in compose)
+        # On AWS: Replace with ECS SD, EC2 SD, or service name
+
+
+  # -----------------------------------------------------
+  # 2. Redis Exporter (cache + latency + memory metrics)
+  # Local: Use redis_exporter container
+  # AWS: Use ElastiCache + redis_exporter on EC2/ECS
+  # -----------------------------------------------------
+  - job_name: "redis_exporter"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+
+  # -----------------------------------------------------
+  # 3. Node Exporter (system metrics: CPU, RAM, disk, network)
+  # Local: node_exporter runs on host or container
+  # AWS: Install node_exporter on EC2 or DaemonSet on EKS
+  # -----------------------------------------------------
+  - job_name: "node_exporter"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+
+  # -----------------------------------------------------
+  # 4. Qdrant Exporter (vector DB metrics)
+  # If using ECS: run qdrant-exporter as a sidecar or separate service
+  # -----------------------------------------------------
+  - job_name: "qdrant_exporter"
+    static_configs:
+      - targets: ["qdrant-exporter:9867"]
+
+
+  # -----------------------------------------------------
+  # 5. CloudWatch Agent Metrics (AWS integration)
+  # Requires cloudwatch-agent running on ECS/EC2
+  # -----------------------------------------------------
+  - job_name: "cloudwatch_agent"
+    static_configs:
+      - targets: ["cloudwatch-agent:9106"]
+
+
+  # -----------------------------------------------------
+  # 6. PushGateway (for batch jobs / training jobs / cron jobs)
+  # ECS Batch or Lambda → PushGateway → Prometheus pull
+  # -----------------------------------------------------
+  - job_name: "pushgateway"
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]
+
+
+  # -----------------------------------------------------
+  # 7. Prometheus Self-Metrics
+  # -----------------------------------------------------
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+
+  # -----------------------------------------------------
+  # 8. AWS ECS Service Discovery (Future-ready)
+  # Works when running Prometheus inside AWS
+  # -----------------------------------------------------
+  - job_name: 'ecs_services'
+    ecs_sd_configs:
+      - region: us-east-1
+        role_arn: arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/prometheus-discovery-role
+        cluster_arn: arn:aws:ecs:us-east-1:YOUR_AWS_ACCOUNT_ID:cluster/getfit-ai-cluster
+    relabel_configs:
+      - source_labels: [__meta_ecs_task_health_status]
+        regex: "^(UNHEALTHY)$"
+        action: drop
+
+
+  # -----------------------------------------------------
+  # 9. K8s Service Discovery (EKS-ready)
+  # DO NOT remove — future support when you migrate to EKS
+  # -----------------------------------------------------
+  - job_name: 'kubernetes_services'
+    kubernetes_sd_configs:
+      - role: service
+        namespaces:
+          names: ["default"]
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)

@@ -1,0 +1,19 @@
+config:
+  target: "http://localhost:8080"
+  phases:
+    - duration: 30
+      arrivalRate: 10   # Single instance
+    - duration: 30
+      arrivalRate: 20   # Simulated 2× instance
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "Scalability Query Test"
+    flow:
+      - post:
+          url: "/api/query"
+          json:
+            query: "bench press form and strength tips"
+            topK: 5

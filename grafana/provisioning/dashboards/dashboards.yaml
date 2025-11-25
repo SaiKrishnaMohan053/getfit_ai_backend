@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: "GetFit AI Dashboards"        # Display name in Grafana → identifies this provisioning source
+    orgId: 1                            # Default organization (usually 1 unless multi-org setup)
+    folder: "GetFit AI"                 # Dashboards will appear inside this folder in Grafana UI
+    type: file                          # Provision dashboards from files (no API calls)
+    disableDeletion: false              # Allow dashboards to be removed if the file is deleted
+    editable: true                      # Dashboards can still be modified in the UI if needed
+    updateIntervalSeconds: 15           # Grafana scans this folder every 15s for updates
+    allowUiUpdates: true                # Allows UI edits to be written back to disk (optional)
+    options:
+      path: /var/lib/grafana/dashboards # Directory Grafana will read dashboard JSON files from
