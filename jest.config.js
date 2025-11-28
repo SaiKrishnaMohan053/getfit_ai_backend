@@ -17,7 +17,8 @@ module.exports = {
       setupFilesAfterEnv: ["<rootDir>/tests/setup/globalSetup.js"],
       moduleNameMapper: {
         "^src/config/qdrantClient.js$": "<rootDir>/tests/mocks/qdrantClient.mock.js",
-        "^src/config/openaiClient.js$": "<rootDir>/tests/mocks/openaiClient.mock.js"
+        "^src/config/openaiClient.js$": "<rootDir>/tests/mocks/openaiClient.mock.js",
+        "^src/config/aiQueue.js$": "<rootDir>/tests/mocks/aiQueue.mock.js"
       }
     },
 
@@ -29,7 +30,9 @@ module.exports = {
       setupFilesAfterEnv: ["<rootDir>/tests/setup/globalSetup.js"],
        moduleNameMapper: {
         "^src/config/qdrantClient.js$": "<rootDir>/tests/mocks/qdrantClient.mock.js",
-        "^src/config/openaiClient.js$": "<rootDir>/tests/mocks/openaiClient.mock.js"
+        "^src/config/openaiClient.js$": "<rootDir>/tests/mocks/openaiClient.mock.js",
+        "^src/config/redisClient.js$": "<rootDir>/tests/mocks/redisClient.mock.js",
+        "^src/config/aiQueue.js$": "<rootDir>/tests/mocks/aiQueue.mock.js"
       }
     }
   ]
