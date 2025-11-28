@@ -16,11 +16,8 @@ module.exports = {
       testMatch: ["<rootDir>/tests/**/*.unit.test.js"],
       setupFilesAfterEnv: ["<rootDir>/tests/setup/globalSetup.js"],
       moduleNameMapper: {
-        // Absolute imports (Windows path fix)
-        "C:\\\\Users\\\\saikr\\\\OneDrive\\\\Desktop\\\\GetFitByHumanAI\\\\getfit_ai_training\\\\src\\\\config\\\\qdrantClient.js":
-          "<rootDir>/tests/mocks/qdrantClient.js",
-        "C:\\\\Users\\\\saikr\\\\OneDrive\\\\Desktop\\\\GetFitByHumanAI\\\\getfit_ai_training\\\\src\\\\config\\\\openaiClient.js":
-          "<rootDir>/tests/mocks/openaiClient.js"
+        "^src/config/qdrantClient.js$": "<rootDir>/tests/mocks/qdrantClient.js",
+        "^src/config/openaiClient.js$": "<rootDir>/tests/mocks/openaiClient.js"
       }
     },
 
@@ -30,11 +27,9 @@ module.exports = {
       testEnvironment: "node",
       testMatch: ["<rootDir>/tests/**/*.int.test.js"],
       setupFilesAfterEnv: ["<rootDir>/tests/setup/globalSetup.js"],
-      moduleNameMapper: {
-        "C:\\\\Users\\\\saikr\\\\OneDrive\\\\Desktop\\\\GetFitByHumanAI\\\\getfit_ai_training\\\\src\\\\config\\\\qdrantClient.js":
-          "<rootDir>/tests/mocks/qdrantClient.js",
-        "C:\\\\Users\\\\saikr\\\\OneDrive\\\\Desktop\\\\GetFitByHumanAI\\\\getfit_ai_training\\\\src\\\\config\\\\openaiClient.js":
-          "<rootDir>/tests/mocks/openaiClient.js"
+       moduleNameMapper: {
+        "^src/config/qdrantClient.js$": "<rootDir>/tests/mocks/qdrantClient.js",
+        "^src/config/openaiClient.js$": "<rootDir>/tests/mocks/openaiClient.js"
       }
     }
   ]
