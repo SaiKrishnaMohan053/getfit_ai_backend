@@ -1,4 +1,4 @@
-name: GetFit_AI Backend CI
+name: getfit_ai_training
 
 on:
   pull_request:
