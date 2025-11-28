@@ -1,4 +1,4 @@
-name: getfit_ai_training
+name: GetFit_AI Backend CI
 
 on:
   pull_request:
@@ -9,6 +9,10 @@ on:
 jobs:
   backend-ci:
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: getfit_ai_training
 
     services:
       mongo:
@@ -72,4 +76,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: coverage/
+          path: getfit_ai_training/coverage/
