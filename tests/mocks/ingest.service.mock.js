@@ -1,4 +1,4 @@
-// tests/mocks/ingest.service.js
+// tests/mocks/ingest.service.mock.js
 module.exports = {
   ingestPDF: jest.fn(async (filePath, domain) => ({
     status: "success",
