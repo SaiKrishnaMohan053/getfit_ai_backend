@@ -26,7 +26,6 @@ jest.mock("../../src/config/qdrantClient", () => ({
 
 const queryCache = require("../../src/cache/queryCache");
 const { safeChatCompletion } = require("../../src/utils/openaiSafeWrap");
-const { qdrantClient } = require("../../src/config/qdrantClient");
 
 const { getRagAnswer, enqueueSummaryJob } = require("../../src/services/queryAnswer.service");
 
