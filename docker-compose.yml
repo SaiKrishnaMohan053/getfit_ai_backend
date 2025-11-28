@@ -1,18 +1,45 @@
-version: "3.9"
-
 services:
-  # ----------------------------------------
+  # ------------------------------------------------------
+  # Backend API (your Node app)
+  # ------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: getfit-backend
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: development
+      PORT: 8080
+
+      # Dummy local environment (safe)
+      OPENAI_API_KEY: "dummy"
+      QDRANT_API_KEY: "dummy"
+      QDRANT_URL: "http://localhost"   # Not used locally
+      MONGO_URI: "mongodb://host.docker.internal:27017/getfit_local"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "local-dev-secret"
+
+      ENABLE_METRICS: "true"
+      ENABLE_BACKGROUND_JOBS: "true"
+
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # ------------------------------------------------------
   # Redis (local dev cache)
-  # ----------------------------------------
+  # ------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: redis
     ports:
       - "6379:6379"
 
-  # ----------------------------------------
-  # Redis Exporter (Prometheus metrics)
-  # ----------------------------------------
+  # ------------------------------------------------------
+  # Redis Exporter
+  # ------------------------------------------------------
   redis-exporter:
     image: oliver006/redis_exporter
     container_name: redis-exporter
@@ -22,10 +49,9 @@ services:
     depends_on:
       - redis
 
-  # ----------------------------------------
-  # Node Exporter (system metrics)
-  # Runs on the host so Prometheus can scrape CPU/RAM/Disk
-  # ----------------------------------------
+  # ------------------------------------------------------
+  # Node Exporter (host metrics)
+  # ------------------------------------------------------
   node-exporter:
     image: prom/node-exporter:latest
     container_name: node-exporter
@@ -33,42 +59,31 @@ services:
     network_mode: "host"
     restart: unless-stopped
     command:
-      - '--path.rootfs=/host'
+      - "--path.rootfs=/host"
     volumes:
-      - '/:/host:ro,rslave'
+      - "/:/host:ro,rslave"
 
-  # ----------------------------------------
-  # Qdrant Exporter (vector DB metrics)
-  # Placeholder image; replace when using Qdrant officially
-  # ----------------------------------------
-  qdrant-exporter:
-    image: ghcr.io/aperium/qdrant-exporter:latest
-    container_name: qdrant-exporter
-    ports:
-      - "9867:9867"
-    restart: unless-stopped
-
-  # ----------------------------------------
-  # Pushgateway (batch jobs, cron jobs)
-  # ----------------------------------------
+  # ------------------------------------------------------
+  # Pushgateway
+  # ------------------------------------------------------
   pushgateway:
     image: prom/pushgateway
     container_name: pushgateway
     ports:
       - "9091:9091"
 
-  # ----------------------------------------
-  # CloudWatch Agent (AWS metrics → Prometheus)
-  # ----------------------------------------
+  # ------------------------------------------------------
+  # CloudWatch Agent (local scraping simulation)
+  # ------------------------------------------------------
   cloudwatch-agent:
     image: amazon/cloudwatch-agent:latest
     container_name: cloudwatch-agent
     ports:
       - "9106:9106"
 
-  # ----------------------------------------
-  # Prometheus (Metrics backend)
-  # ----------------------------------------
+  # ------------------------------------------------------
+  # Prometheus
+  # ------------------------------------------------------
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -76,20 +91,18 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
-    # Required for Linux so Prometheus can reach the host backend
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       - redis
       - redis-exporter
       - node-exporter
-      - qdrant-exporter
       - cloudwatch-agent
       - pushgateway
 
-  # ----------------------------------------
-  # Grafana (Dashboards UI)
-  # ----------------------------------------
+  # ------------------------------------------------------
+  # Grafana
+  # ------------------------------------------------------
   grafana:
     image: grafana/grafana:latest
     container_name: grafana

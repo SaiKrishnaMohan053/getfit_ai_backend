@@ -13,7 +13,7 @@ jest.mock("../../src/services/ingest.service.js", () => ({
 
 const { trainDocument } = require("../../src/services/ingest.service.js");
 const request = require("supertest");
-const app = require("../../src/app");
+const app = require("../../src/app.js");
 
 describe("ROUTE: POST /api/train", () => {
   beforeEach(() => {
