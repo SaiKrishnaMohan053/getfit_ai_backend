@@ -2,7 +2,7 @@ module.exports = {
   clearMocks: true,
   verbose: true,
   forceExit: true,
-  testTimeout: 60000, // handles heavier integration tests
+  testTimeout: 60000,
   setupFilesAfterEnv: ["<rootDir>/tests/setup/globalSetup.js"],
 
   // -----------------------------
