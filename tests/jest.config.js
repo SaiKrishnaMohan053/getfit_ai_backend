@@ -13,7 +13,7 @@ module.exports = {
     {
       displayName: "unit",
       testEnvironment: "node",
-      testMatch: ["<rootDir>/tests/**/*.unit.test.js"],
+      testMatch: ["**/tests/**/*.unit.test.js"],
       setupFilesAfterEnv: ["<rootDir>/tests/setup/globalSetup.js"],
       moduleNameMapper: {
         "^src/config/qdrantClient.js$": "<rootDir>/tests/mocks/qdrantClient.js",
@@ -25,7 +25,7 @@ module.exports = {
     {
       displayName: "integration",
       testEnvironment: "node",
-      testMatch: ["<rootDir>/tests/**/*.int.test.js"],
+      testMatch: ["**/tests/**/*.int.test.js"],
       setupFilesAfterEnv: ["<rootDir>/tests/setup/globalSetup.js"],
        moduleNameMapper: {
         "^src/config/qdrantClient.js$": "<rootDir>/tests/mocks/qdrantClient.js",
