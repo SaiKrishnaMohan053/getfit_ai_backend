@@ -1,0 +1,108 @@
+{
+  "uid": "getfit-ai",
+  "title": "GetFit_AI System Dashboard",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "type": "gauge",
+      "title": "Heap Used (MB)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "backend_heap_used_bytes / 1048576" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "megabytes",
+          "thresholds": {
+            "steps": [
+              { "color": "green" },
+              { "value": 150, "color": "orange" },
+              { "value": 250, "color": "red" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "Resident Memory (MB)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "targets": [{ "expr": "backend_memory_rss_bytes / 1048576" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "megabytes",
+          "thresholds": {
+            "steps": [
+              { "color": "green" },
+              { "value": 200, "color": "orange" },
+              { "value": 400, "color": "red" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "Event Loop Lag (s)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "targets": [{ "expr": "backend_eventloop_lag_seconds" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              { "color": "green" },
+              { "value": 0.05, "color": "orange" },
+              { "value": 0.1, "color": "red" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "OpenAI Response Time (ms)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(openai_response_time_ms_sum[5m]) / rate(openai_response_time_ms_count[5m])"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache Hit Ratio",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "targets": [
+        {
+          "expr": "redis_cache_hits_total / ignoring() (redis_cache_hits_total + redis_cache_misses_total + 1)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Requests / Second",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "targets": [{ "expr": "rate(http_requests_total[1m])" }],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    }
+  ]
+}

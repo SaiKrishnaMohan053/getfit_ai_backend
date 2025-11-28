@@ -1,0 +1,229 @@
+{
+  "uid": "getfit_health_v1",
+  "title": "GetFit Backend Health Overview",
+  "tags": ["getfit", "ai", "backend", "alerts"],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 42,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "View Internals →",
+      "type": "dashboard",
+      "keepTime": true,
+      "targetBlank": true,
+      "url": "/d/getfit-ai-backend-metrics"
+    }
+  ],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Backend Uptime (hours)",
+      "id": 10,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "(time() - process_start_time_seconds) / 3600", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "hours",
+          "color": { "mode": "continuous-BlPu" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "type": "stat",
+      "title": "Redis Hit Ratio (%)",
+      "id": 11,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "100 * rate(redis_cache_hits_total[5m]) / (rate(redis_cache_hits_total[5m]) + rate(redis_cache_misses_total[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 85 },
+              { "color": "red", "value": 70 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "alert": {
+        "name": "Redis Hit Ratio < 85%",
+        "frequency": "1m",
+        "handler": 1,
+        "noDataState": "OK",
+        "executionErrorState": "alerting",
+        "conditions": [
+          {
+            "evaluator": { "params": [85], "type": "lt" },
+            "operator": { "type": "and" },
+            "query": { "params": ["A", "5m", "now"] },
+            "reducer": { "type": "avg" },
+            "type": "query"
+          }
+        ]
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Avg OpenAI Latency (ms)",
+      "id": 12,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(openai_response_time_ms_sum[5m]) / rate(openai_response_time_ms_count[5m])",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 3000 },
+              { "color": "red", "value": 5000 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "alert": {
+        "name": "OpenAI Latency > 5000ms",
+        "frequency": "1m",
+        "conditions": [
+          {
+            "evaluator": { "params": [5000], "type": "gt" },
+            "operator": { "type": "and" },
+            "query": { "params": ["A", "5m", "now"] },
+            "reducer": { "type": "avg" },
+            "type": "query"
+          }
+        ]
+      }
+    },
+    {
+      "type": "stat",
+      "title": "BullMQ Failures (5m)",
+      "id": 13,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "increase(bullmq_jobs_failed[5m])", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "alert": {
+        "name": "BullMQ Job Failures > 0",
+        "frequency": "1m",
+        "conditions": [
+          {
+            "evaluator": { "params": [0], "type": "gt" },
+            "operator": { "type": "and" },
+            "query": { "params": ["A", "5m", "now"] },
+            "reducer": { "type": "sum" },
+            "type": "query"
+          }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Heap Used (MB)",
+      "id": 5,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "nodejs_heap_size_used_bytes / 1024 / 1024", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "megabytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 300 },
+              { "color": "red", "value": 500 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "alert": {
+        "name": "Heap Usage > 300MB",
+        "frequency": "1m",
+        "conditions": [
+          {
+            "evaluator": { "params": [300], "type": "gt" },
+            "operator": { "type": "and" },
+            "query": { "params": ["A", "5m", "now"] },
+            "reducer": { "type": "avg" },
+            "type": "query"
+          }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Event Loop Lag (seconds)",
+      "id": 6,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "nodejs_eventloop_lag_seconds", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "alert": {
+        "name": "Event Loop Lag > 0.5s",
+        "frequency": "1m",
+        "conditions": [
+          {
+            "evaluator": { "params": [0.5], "type": "gt" },
+            "operator": { "type": "and" },
+            "query": { "params": ["A", "5m", "now"] },
+            "reducer": { "type": "avg" },
+            "type": "query"
+          }
+        ]
+      }
+    }
+  ]
+}

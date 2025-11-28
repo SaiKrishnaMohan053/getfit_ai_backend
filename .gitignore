@@ -56,7 +56,6 @@ test-report.xml
 tests/perf/output/
 tests/perf/results/
 *.csv
-*.json
 
 # Baseline / summary files auto-generated
 tests/nonfunctional/current_summary.json

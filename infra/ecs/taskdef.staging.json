@@ -1,0 +1,75 @@
+{
+  "family": "getfit-ai-staging-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+
+  "executionRoleArn": "arn:aws:iam::180294195589:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::180294195589:role/getfit-ai-taskRole",
+
+  "containerDefinitions": [
+    {
+      "name": "getfit-api",
+      "image": "REPLACED_BY_GITHUB_ACTIONS",
+      "essential": true,
+
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "hostPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+
+      "environment": [
+        { "name": "NODE_ENV", "value": "staging" },
+        { "name": "PORT", "value": "8080" },
+
+        { "name": "ENABLE_METRICS", "value": "true" },
+        { "name": "ENABLE_BACKGROUND_JOBS", "value": "true" },
+
+        { "name": "QDRANT_COLLECTION", "value": "getfit_staging" }
+      ],
+
+      "secrets": [
+        {
+          "name": "OPENAI_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:180294195589:secret:getfit-ai-staging-openai-key-6W2L6R"
+        },
+        {
+          "name": "QDRANT_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:180294195589:secret:getfit-ai-staging-qdrant-api-8VUD3S"
+        },
+        {
+          "name": "QDRANT_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:180294195589:secret:getfit-ai-staging-qdrant-url-J85Z3c"
+        },
+        {
+          "name": "REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:180294195589:secret:getfit-ai-staging-redis-url-PcyFtS"
+        }
+      ],
+
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/getfit-ai-staging",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "getfit-api"
+        }
+      },
+
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:8080/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 10
+      }
+    }
+  ]
+}
