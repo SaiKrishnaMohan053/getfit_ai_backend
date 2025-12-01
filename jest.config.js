@@ -69,6 +69,14 @@ module.exports = {
       setupFilesAfterEnv: ["<rootDir>/tests/setup/globalSetup.js"],
 
       moduleNameMapper: {
+        "^src/config/openaiClient(.js)?$":
+          "<rootDir>/tests/mocks/openaiClient.mock.js",
+        "^../config/openaiClient(.js)?$":
+          "<rootDir>/tests/mocks/openaiClient.mock.js",
+        "^config/openaiClient(.js)?$":
+          "<rootDir>/tests/mocks/openaiClient.mock.js",
+        "openaiClient":
+          "<rootDir>/tests/mocks/openaiClient.mock.js",
       },
     },
   ],

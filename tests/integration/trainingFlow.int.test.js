@@ -14,13 +14,19 @@ let trainedDocId = null;
 
 describe("E2E — TRAIN → QUERY → DELETE → STATS", () => {
 
+  beforeAll(() => {
+    const uploadsDir = path.join(__dirname, "../../uploads/train");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+  });
+
   // ---------------------------------------------------------------
   // 1) TRAIN
   // ---------------------------------------------------------------
   it("should TRAIN a PDF and embed it", async () => {
     const pdfPath = path.resolve(
-      __dirname,
-      "../../GetFitByHumanAI_Complete_Architecture.pdf"
+      __dirname, "../assets/dummy.pdf"
     );
 
     expect(fs.existsSync(pdfPath)).toBe(true);

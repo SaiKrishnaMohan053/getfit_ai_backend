@@ -90,7 +90,6 @@ queue-archive/
 queue-temp/
 
 # PDF and temp files in project
-*.pdf
 tmp/
 temp/
 
