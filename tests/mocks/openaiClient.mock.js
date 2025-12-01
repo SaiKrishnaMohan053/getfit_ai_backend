@@ -1,24 +1,31 @@
 // tests/mocks/openaiClient.mock.js
-const jestMock = require("jest-mock");
 
-module.exports = {
-  openai: {
-    embeddings: {
-      create: jestMock.fn().mockResolvedValue({
-        data: [
-          { embedding: [0.1, 0.2, 0.3] }
-        ]
-      }),
-    },
+const mockChatCompletion = jest.fn().mockResolvedValue({
+  choices: [
+    { message: { content: "Mock assistant reply OK" } }
+  ]
+});
 
-    chat: {
-      completions: {
-        create: jestMock.fn().mockResolvedValue({
-          choices: [
-            { message: { content: "mocked-openai-response" } }
-          ]
-        })
-      }
+const mockEmbedding = jest.fn().mockResolvedValue({
+  data: [{ embedding: Array(3072).fill(0.123) }]
+});
+
+// FULL mock matches real client structure
+const openai = {
+  embeddings: {
+    create: mockEmbedding
+  },
+
+  chat: {
+    completions: {
+      create: mockChatCompletion
     }
-  }
+  },
+
+  // custom wrapper – your code uses this
+  chatCompletionWithMetrics: jest.fn(async (options) => {
+    return mockChatCompletion(options);
+  })
 };
+
+module.exports = { openai };

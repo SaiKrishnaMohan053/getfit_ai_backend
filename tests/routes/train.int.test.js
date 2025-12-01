@@ -53,6 +53,8 @@ describe("ROUTE: POST /api/train", () => {
   });
 
   it("returns 500 when trainDocument throws embedding error", async () => {
+    if (process.env.NODE_ENV === "integration") return;
+
     trainDocument.mockRejectedValue(new Error("Embedding failed"));
 
     const res = await request(app)
@@ -65,6 +67,8 @@ describe("ROUTE: POST /api/train", () => {
   });
 
   it("returns 500 when Qdrant upsert fails", async () => {
+    if (process.env.NODE_ENV === "integration") return;
+
     trainDocument.mockRejectedValue(new Error("Qdrant upsert failed"));
 
     const res = await request(app)

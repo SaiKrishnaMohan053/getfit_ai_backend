@@ -1,4 +1,4 @@
-// tests/mocks/pdfReader.mock.js
-module.exports = {
-  readPDF: jest.fn(async () => "dummy pdf text"),
-};
+// mocks/pdfReader.mock.js
+const parsePdf = jest.fn(async () => "dummy pdf text");
+
+module.exports = { parsePdf };

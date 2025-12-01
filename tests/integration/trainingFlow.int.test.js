@@ -30,7 +30,11 @@ describe("E2E — TRAIN → QUERY → DELETE → STATS", () => {
       .attach("pdf", pdfPath)
       .field("domain", "training")
       .field("source_file", "GetFitByHumanAI_Complete_Architecture.pdf")
-      .expect(res => expect([200, 202]).toContain(res.statusCode));
+      .expect(res => {
+        if (![200, 202].includes(res.statusCode)) {
+          throw new Error(`Invalid status: ${res.statusCode}`);
+        }
+      });
 
     if (res.statusCode === 200) {
       expect(res.body.ok).toBe(true);

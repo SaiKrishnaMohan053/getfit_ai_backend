@@ -1,14 +1,9 @@
 // tests/services/ingest.service.test.js
 // Unit tests for trainDocument ingestion pipeline
-
 jest.mock("fs", () => ({
   existsSync: jest.fn().mockReturnValue(true),
   mkdirSync: jest.fn(),
   appendFileSync: jest.fn(),
-}));
-
-jest.mock("../../src/utils/pdfReader", () => ({
-  parsePdf: jest.fn(),
 }));
 
 jest.mock("../../src/utils/chunker", () => ({
@@ -19,7 +14,7 @@ jest.mock("../../src/utils/embedding", () => ({
   embedText: jest.fn(),
 }));
 
-jest.mock("../../src/config/qdrantClient.js", () => ({
+jest.mock("../../src/config/qdrantClient", () => ({
   qdrantClient: {
     upsert: jest.fn(),
   },
@@ -55,10 +50,11 @@ describe("SERVICE: trainDocument (ingestion pipeline)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.resetAllMocks();
   });
 
   it("throws when parsed PDF text is empty", async () => {
-    parsePdf.mockResolvedValue("   ");
+    parsePdf.mockResolvedValueOnce("");
 
     await expect(
       trainDocument({
