@@ -35,7 +35,7 @@ describe("E2E — TRAIN → QUERY → DELETE → STATS", () => {
       .post("/api/train")
       .attach("pdf", pdfPath)
       .field("domain", "training")
-      .field("source_file", "GetFitByHumanAI_Complete_Architecture.pdf")
+      .field("source_file", "dummy.pdf")
       .expect(res => {
         if (![200, 202].includes(res.statusCode)) {
           throw new Error(`Invalid status: ${res.statusCode}`);
