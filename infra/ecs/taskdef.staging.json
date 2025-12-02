@@ -10,8 +10,8 @@
 
   "containerDefinitions": [
     {
-      "name": "getfit-api",
-      "image": "REPLACED_BY_GITHUB_ACTIONS",
+      "name": "backend",
+      "image": "180294195589.dkr.ecr.us-east-1.amazonaws.com/getfit_ai_backend:latest",
       "essential": true,
 
       "portMappings": [
@@ -29,7 +29,11 @@
         { "name": "ENABLE_METRICS", "value": "true" },
         { "name": "ENABLE_BACKGROUND_JOBS", "value": "true" },
 
-        { "name": "QDRANT_COLLECTION", "value": "getfit_staging" }
+        { "name": "QDRANT_COLLECTION", "value": "getfit_staging" },
+
+        { "name": "REDIS_HOST", "value": "getfit-redis-9y9aob.serverless.use1.cache.amazonaws.com" },
+        { "name": "REDIS_PORT", "value": "6379" },
+        { "name": "STAGING_BASE_URL", "value": "http://localhost:8080" }
       ],
 
       "secrets": [
@@ -47,7 +51,7 @@
         },
         {
           "name": "REDIS_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:180294195589:secret:getfit-ai-staging-redis-url-PcyFtS"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:180294195589:secret:getfit-ai-redis-yF90ZJ"
         }
       ],
 
