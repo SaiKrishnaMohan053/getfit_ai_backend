@@ -40,13 +40,15 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           # ⚠️ IMPORTANT: this comes from your secret and must be "getfit_ai_backend"
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
+          ECR_REPOSITORY: getfit_ai_backend
           IMAGE_TAG: ${{ github.sha }}
         run: |
           echo "Building image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          SAFE_IMAGE=$(echo "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG")
+          echo "image=$SAFE_IMAGE" >> $GITHUB_OUTPUT
+
 
   # 2) Update task definition and deploy to ECS
   deploy-staging:
