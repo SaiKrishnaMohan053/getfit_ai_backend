@@ -6,6 +6,22 @@
  *   2. OpenAI client connectivity (embeddings + chat)
  *   3. Graceful handling of invalid credentials for both services
  */
+jest.mock("../../src/config/openaiClient", () => ({
+  openai: {
+    chat: {
+      completions: {
+        create: jest.fn().mockResolvedValue({
+          choices: [{ message: { content: "integration test OK" } }]
+        })
+      }
+    },
+    chatCompletionWithMetrics: jest.fn(async (options) => {
+      return {
+        choices: [{ message: { content: "integration test OK" } }],
+      };
+    })
+  }
+}));
 
 jest.setTimeout(30000);
 
