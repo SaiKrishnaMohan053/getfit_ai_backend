@@ -16,38 +16,9 @@ module.exports = {
       displayName: "unit",
       testEnvironment: "node",
       testMatch: ["**/tests/**/*.unit.test.js"],
+      setupFiles: ["<rootDir>/tests/setup/globalMocks.js"],
       setupFilesAfterEnv: ["<rootDir>/tests/setup/globalSetup.js"],
-
       moduleNameMapper: {
-        // Mock Qdrant client
-        "^src/config/qdrantClient(.js)?$":
-          "<rootDir>/tests/mocks/qdrantClient.mock.js",
-
-        // Mock OpenAI everywhere
-        "^src/config/openaiClient(.js)?$":
-          "<rootDir>/tests/mocks/openaiClient.mock.js",
-        "^../config/openaiClient(.js)?$":
-          "<rootDir>/tests/mocks/openaiClient.mock.js",
-        "^config/openaiClient(.js)?$":
-          "<rootDir>/tests/mocks/openaiClient.mock.js",
-        "openaiClient":
-          "<rootDir>/tests/mocks/openaiClient.mock.js",
-
-        // Mock PDF Reader
-        "^src/utils/pdfReader(.js)?$":
-          "<rootDir>/tests/mocks/pdfReader.mock.js",
-        "^../utils/pdfReader(.js)?$":
-          "<rootDir>/tests/mocks/pdfReader.mock.js",
-        "^utils/pdfReader(.js)?$":
-          "<rootDir>/tests/mocks/pdfReader.mock.js",
-        "^../../src/utils/pdfReader(.js)?$":
-          "<rootDir>/tests/mocks/pdfReader.mock.js",
-
-        // Redis & Queue mocks
-        "^src/config/redisClient(.js)?$":
-          "<rootDir>/tests/mocks/redisClient.mock.js",
-        "^src/config/aiQueue(.js)?$":
-          "<rootDir>/tests/mocks/aiQueue.mock.js"
       },
     },
 
@@ -66,17 +37,12 @@ module.exports = {
       displayName: "integration",
       testEnvironment: "node",
       testMatch: ["**/tests/**/*.int.test.js"],
-      setupFilesAfterEnv: ["<rootDir>/tests/setup/globalSetup.js"],
+      setupFiles: ["<rootDir>/tests/setup/globalMocks.js"],
+      setupFilesAfterEnv: [
+        "<rootDir>/tests/setup/globalSetup.js"
+      ],
 
       moduleNameMapper: {
-        "^src/config/openaiClient(.js)?$":
-          "<rootDir>/tests/mocks/openaiClient.mock.js",
-        "^../config/openaiClient(.js)?$":
-          "<rootDir>/tests/mocks/openaiClient.mock.js",
-        "^config/openaiClient(.js)?$":
-          "<rootDir>/tests/mocks/openaiClient.mock.js",
-        "openaiClient":
-          "<rootDir>/tests/mocks/openaiClient.mock.js",
       },
     },
   ],

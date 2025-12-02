@@ -7,6 +7,7 @@ const { config } = require("./env");
 const qdrantClient = new QdrantClient({
   url: config.QDRANT_URL,
   apiKey: config.QDRANT_API_KEY,
+  checkCompatibility: false,
 });
 
 /**
