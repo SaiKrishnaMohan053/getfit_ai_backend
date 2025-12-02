@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      image_uri: ${{ steps.build-image.outputs.image }}
+      image_uri: ${{ steps.build_image.outputs.image }}
 
     steps:
       - name: Checkout
@@ -36,7 +36,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build & Push Docker Image
-        id: build-image
+        id: build_image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           # ⚠️ IMPORTANT: this comes from your secret and must be "getfit_ai_backend"
