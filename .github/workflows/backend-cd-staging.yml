@@ -16,7 +16,7 @@ jobs:
   # ------------------------------------------------------
   # 1) BUILD DOCKER IMAGE + PUSH TO ECR
   # ------------------------------------------------------
-  build-and-push:
+  build_and_push:
     runs-on: ubuntu-latest
 
     outputs:
