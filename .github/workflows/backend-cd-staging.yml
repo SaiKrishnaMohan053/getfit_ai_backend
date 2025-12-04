@@ -49,12 +49,12 @@ jobs:
 
       - name: Debug registry
         run: |
-          echo "ECR Registry: ${{ steps.login-ecr.outputs.registry }}"
+          echo "ECR Registry: ${{ steps.login_ecr.outputs.registry }}"
 
       - name: Build & push Docker image
         id: build_and_push_image
         env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REGISTRY: ${{ steps.login_ecr.outputs.registry }}
           REPOSITORY: getfit_ai_backend
           TAG: ${{ github.sha }}
         run: |
@@ -66,7 +66,7 @@ jobs:
       - name: Export image output
         id: export_image
         env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REGISTRY: ${{ steps.login_ecr.outputs.registry }}
           REPOSITORY: getfit_ai_backend
           TAG: ${{ github.sha }}
         run: |
