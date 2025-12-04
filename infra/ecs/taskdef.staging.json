@@ -15,7 +15,7 @@
     {
       "name": "backend",
 
-      "image": "180294195589.dkr.ecr.us-east-1.amazonaws.com/getfit_ai_backend:latest",
+      "image": "180294195589.dkr.ecr.us-east-1.amazonaws.com/getfit_ai_backend:IMAGE_TAG",
 
       "essential": true,
 

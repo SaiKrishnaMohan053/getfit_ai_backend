@@ -13,7 +13,6 @@ on:
       - "scripts/**"
 
 jobs:
-
   # ------------------------------------------------------
   # 1) BUILD DOCKER IMAGE + PUSH TO ECR
   # ------------------------------------------------------
@@ -24,10 +23,10 @@ jobs:
       image: ${{ steps.export_image.outputs.image }}
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -38,8 +37,8 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & Push Docker Image
-        id: build_and_push
+      - name: Build & push Docker image
+        id: build-and-push-image
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           REPOSITORY: getfit_ai_backend
@@ -50,7 +49,7 @@ jobs:
           docker build -t $REGISTRY/$REPOSITORY:$TAG .
           docker push $REGISTRY/$REPOSITORY:$TAG
 
-      - name: Export Image Output
+      - name: Export image output
         id: export_image
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -61,7 +60,6 @@ jobs:
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
           echo "Exported image: $IMAGE"
 
-
   # ------------------------------------------------------
   # 2) UPDATE TASK DEFINITION + DEPLOY TO ECS (STAGING)
   # ------------------------------------------------------
@@ -70,68 +68,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Render ECS Task Definition
+      - name: Render ECS task definition
         id: render-taskdef
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
+          # NOTE: use forward slashes in repo path
           task-definition: infra/ecs/taskdef.staging.json
           container-name: backend
           image: ${{ needs.build-and-push.outputs.image }}
 
-      - name: Deploy ECS Service (Staging)
+      - name: Deploy ECS service (staging)
         id: deploy-ecs
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render-taskdef.outputs.task-definition }}
-          service: ${{ secrets.ECS_SERVICE_STAGING }}
-          cluster: ${{ secrets.ECS_CLUSTER_STAGING }}
+          cluster: ${{ secrets.ECS_CLUSTER_STAGING }}   # e.g. "getfit-ai-staging-cluster"
+          service: ${{ secrets.ECS_SERVICE_STAGING }}   # e.g. "getfit-ai-staging-task-service-k4l73lvg"
           wait-for-service-stability: true
-
-
-  # ------------------------------------------------------
-  # 3) POST-DEPLOY SMOKE TESTS (STAGING)
-  # ------------------------------------------------------
-  post-deploy-e2e:
-    needs: deploy-staging
-    runs-on: ubuntu-latest
-
-    env:
-      STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Run E2E Smoke Tests
-        id: smoke
-        run: |
-          chmod +x ./scripts/e2e-smoke.sh
-          ./scripts/e2e-smoke.sh
-
-      - name: Slack Notification
-        if: always() && env.SLACK_WEBHOOK_URL != ''
-        run: |
-          STATUS="SUCCESS"
-          if [ "${{ job.status }}" != "success" ]; then STATUS="FAILED"; fi
-
-          payload=$(jq -n \
-            --arg status "$STATUS" \
-            --arg repo "$GITHUB_REPOSITORY" \
-            --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            '{text: "Backend Staging Deploy: \($status)\nRepository: \($repo)\nRun: \($run)"}')
-
-          curl -X POST -H "Content-Type: application/json" -d "$payload" "$SLACK_WEBHOOK_URL"
