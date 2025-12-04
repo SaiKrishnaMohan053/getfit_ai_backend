@@ -13,14 +13,12 @@ on:
       - "scripts/**"
 
 jobs:
+
   # ------------------------------------------------------
-  # 1) BUILD DOCKER IMAGE + PUSH TO ECR
+  # 1) BUILD + PUSH DOCKER IMAGE
   # ------------------------------------------------------
   build_and_push:
     runs-on: ubuntu-latest
-
-    outputs:
-      image: ${{ steps.export_image.outputs.image }}
 
     steps:
       - name: Checkout repository
@@ -42,42 +40,35 @@ jobs:
           REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           aws ecr get-login-password --region $AWS_REGION \
             | docker login --username AWS --password-stdin $REGISTRY
-          echo "registry=$REGISTRY" >> $GITHUB_OUTPUT
+          echo "REGISTRY=$REGISTRY" >> $GITHUB_ENV
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
-      - name: Debug registry
-        run: |
-          echo "ECR Registry: ${{ steps.login_ecr.outputs.registry }}"
-
       - name: Build & push Docker image
-        id: build_and_push_image
+        id: build_image
         env:
-          REGISTRY: ${{ steps.login_ecr.outputs.registry }}
-          REPOSITORY: getfit_ai_backend
-          TAG: ${{ github.sha }}
-        run: |
-          echo "Building image: $REGISTRY/$REPOSITORY:$TAG"
-
-          docker build -t $REGISTRY/$REPOSITORY:$TAG .
-          docker push $REGISTRY/$REPOSITORY:$TAG
-
-      - name: Export image output
-        id: export_image
-        env:
-          REGISTRY: ${{ steps.login_ecr.outputs.registry }}
+          REGISTRY: ${{ env.REGISTRY }}
           REPOSITORY: getfit_ai_backend
           TAG: ${{ github.sha }}
         run: |
           IMAGE="$REGISTRY/$REPOSITORY:$TAG"
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "Building image: $IMAGE"
+          docker build -t $IMAGE .
+          docker push $IMAGE
+          echo "$IMAGE" > image.txt
           echo "Exported image: $IMAGE"
 
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: built-image
+          path: image.txt
+
   # ------------------------------------------------------
-  # 2) UPDATE TASK DEFINITION + DEPLOY TO ECS (STAGING)
+  # 2) DEPLOY TO ECS USING SAVED IMAGE
   # ------------------------------------------------------
-  deploy-staging:
+  deploy_staging:
     needs: build_and_push
     runs-on: ubuntu-latest
 
@@ -92,20 +83,30 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Download image artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: built-image
+
+      - name: Read image from artifact
+        id: read_image
+        run: |
+          IMAGE=$(cat image.txt)
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "Using image: $IMAGE"
+
       - name: Render ECS task definition
-        id: render-taskdef
+        id: render_taskdef
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          # NOTE: use forward slashes in repo path
           task-definition: infra/ecs/taskdef.staging.json
           container-name: backend
-          image: ${{ needs.build_and_push.outputs.image }}
+          image: ${{ steps.read_image.outputs.image }}
 
       - name: Deploy ECS service (staging)
-        id: deploy-ecs
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition: ${{ steps.render-taskdef.outputs.task-definition }}
-          cluster: ${{ secrets.ECS_CLUSTER_STAGING }}   # e.g. "getfit-ai-staging-cluster"
-          service: ${{ secrets.ECS_SERVICE_STAGING }}   # e.g. "getfit-ai-staging-task-service-k4l73lvg"
+          task-definition: ${{ steps.render_taskdef.outputs.task-definition }}
+          cluster: ${{ secrets.ECS_CLUSTER_STAGING }}
+          service: ${{ secrets.ECS_SERVICE_STAGING }}
           wait-for-service-stability: true
