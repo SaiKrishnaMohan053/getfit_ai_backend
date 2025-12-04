@@ -78,7 +78,7 @@ jobs:
   # 2) UPDATE TASK DEFINITION + DEPLOY TO ECS (STAGING)
   # ------------------------------------------------------
   deploy-staging:
-    needs: build-and-push
+    needs: build_and_push
     runs-on: ubuntu-latest
 
     steps:
@@ -99,7 +99,7 @@ jobs:
           # NOTE: use forward slashes in repo path
           task-definition: infra/ecs/taskdef.staging.json
           container-name: backend
-          image: ${{ needs.build-and-push.outputs.image }}
+          image: ${{ needs.build_and_push.outputs.image }}
 
       - name: Deploy ECS service (staging)
         id: deploy-ecs
