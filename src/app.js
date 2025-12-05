@@ -31,6 +31,11 @@ app.use(cors());
 app.use(express.json({ limit: "25mb" }));
 app.use(morgan("dev"));
 
+// ECS / ALB health check
+app.get("/", (req, res) => {
+  res.status(200).json({ ok: true });
+});
+
 /**
  * Prometheus HTTP request counter  
  * Captures method, route, and status code for each request.
