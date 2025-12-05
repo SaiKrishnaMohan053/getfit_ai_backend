@@ -16,7 +16,7 @@ const router = express.Router();
  *
  * This route is used for ALB/ECS/K8s health probes.
  */
-router.get("/", async (req, res) => {
+router.get("/health", async (req, res) => {
   try {
     // verify connectivity
     await qdrantClient.getCollections();
