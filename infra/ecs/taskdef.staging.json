@@ -1,7 +1,7 @@
 {
   "family": "getfit-backend-task",
 
-  "networkMode": "awsvpc",
+  "networkMode": "awsvpc", 
 
   "requiresCompatibilities": ["FARGATE"],
 
