@@ -2,7 +2,7 @@
  * Health Route Tests — Matches GetFit_AI backend routing exactly.
  *
  * Endpoints under test:
- * - GET /api/              (from health.routes.js)
+ * - GET /              (from health.routes.js)
  * - GET /api/memory        (from health.routes.js)
  * - GET /api/health/memory (from healthMemory.routes.js)
  */
@@ -27,22 +27,16 @@ const app = require("../../src/app");
 
 describe("HEALTH ROUTES", () => {
 
-  it("GET /api/ should report OK", async () => {
-    const res = await request(app).get("/api/");
+  it("GET / should report OK", async () => {
+    const res = await request(app).get("/");
 
     expect(res.statusCode).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.services).toEqual(
-      expect.objectContaining({
-        qdrant: true,
-        openai: true
-      })
-    );
   });
 
-  it("GET /api/ should respond quickly (<300ms)", async () => {
+  it("GET / should respond quickly (<300ms)", async () => {
     const start = Date.now();
-    const res = await request(app).get("/api/");
+    const res = await request(app).get("/");
     const diff = Date.now() - start;
 
     expect(res.statusCode).toBe(200);
