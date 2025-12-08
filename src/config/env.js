@@ -2,7 +2,7 @@
 // Centralized environment variable loading and validation
 
 const dotenv = require("dotenv");
-dotenv.config();
+dotenv.config({ override: false });
 
 /**
  * Normalized application configuration.

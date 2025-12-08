@@ -45,19 +45,19 @@
       "secrets": [
         {
           "name": "OPENAI_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi"
         },
         {
           "name": "QDRANT_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi"
         },
         {
           "name": "QDRANT_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi"
         },
         {
           "name": "REDIS_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi"
         }
       ],
 
