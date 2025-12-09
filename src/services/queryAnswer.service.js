@@ -1,6 +1,12 @@
 // src/services/queryAnswer.service.js
 // High-level RAG answer service with routing, caching, and safety rules
 
+function timeoutPromise(ms) {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`TIMEOUT_${ms}`)), ms);
+  });
+}
+
 const { embedText } = require("../utils/embedding");
 const { qdrantClient } = require("../config/qdrantClient");
 const { config } = require("../config/env");
@@ -75,48 +81,22 @@ function classifyDomain(query) {
   const q = query.toLowerCase();
 
   const trainingWords = [
-    "workout",
-    "exercise",
-    "sets",
-    "reps",
-    "bench",
-    "squat",
-    "deadlift",
-    "push day",
-    "pull day",
-    "leg day",
-    "program",
-    "routine",
-    "training",
-    "tempo",
-    "tempo training",
-    "training question"
+    "exercise", "exercises", "workout", "workouts",
+    "push day", "pull day", "leg day",
+    "bench press", "squat", "deadlift",
+    "sets", "reps", "training program",
   ];
 
   const nutritionWords = [
-    "calories",
-    "protein",
-    "carbs",
-    "fats",
-    "meal",
-    "diet",
-    "macros",
-    "bulking",
-    "cutting",
-    "nutrition",
-    "breakfast",
-    "dinner",
+    "protein", "carbs", "fats", "calories",
+    "meal plan", "diet plan", "nutrition",
+    "macros", "bulking", "cutting",
   ];
 
   const lifestyleWords = [
-    "sleep",
-    "stress",
-    "recovery",
-    "steps",
-    "walking",
-    "sedentary",
-    "lifestyle",
-    "habits",
+    "sleep", "stress", "recovery",
+    "steps per day", "walking routine",
+    "lifestyle habits"
   ];
 
   if (trainingWords.some((w) => q.includes(w))) return "training";
@@ -157,6 +137,7 @@ function routeQuery(query) {
 
   const domain = classifyDomain(query);
   if (domain === "unknown") {
+    logger.info("unknown domain detected. no RAG.");
     return { type: "unknown" };
   }
 
@@ -177,7 +158,7 @@ async function handleSmallTalk(query) {
       {
         role: "system",
         content:
-          "You are a friendly fitness assistant. Answer briefly and casually. Do NOT give medical advice.",
+          "You are a friendly fitness assistant. Respond casually, briefly, and without using any trainer data.",
       },
       { role: "user", content: query },
     ],
@@ -233,7 +214,7 @@ async function handleUnknownQuery(query) {
       {
         role: "system",
         content:
-          "You are a fitness-focused assistant. If a question is outside training, nutrition, or lifestyle, answer briefly and say that it is outside the verified trainer library.",
+          "You are a fitness-focused assistant. This question is outside training, nutrition, or lifestyle. Answer briefly using general knowledge only, without referencing trainer data.",
       },
       { role: "user", content: query },
     ],
@@ -253,7 +234,7 @@ async function handleUnknownQuery(query) {
 }
 
 async function answerWithRag(query, domain) {
-  logger.info(`Routing query to RAG pipeline (domain=${domain})`);
+  logger.info(`RAG invoked for domain=${domain}, query="${query}"`);
 
   // Cache check (Redis via queryCache helper)
   const cached = await queryCache.get(query);
@@ -473,7 +454,20 @@ async function getRagAnswer(input) {
       return handleAppQuery(query);
 
     case "domainQuestion":
-      return answerWithRag(query, route.domain);
+      return Promise.race([
+        answerWithRag(query, route.domain),
+        timeoutPromise(90000)
+      ]).catch(err => {
+        if (err.message.startsWith("TIMEOUT_")) {
+          logger.warn("RAG timed out after 90 seconds");
+          return {
+            ok: false,
+            mode: "timeout",
+            answer: "This question is taking too long. Try rephrasing or simplifying.",
+          };
+        }
+        throw err;
+      });
 
     case "unknown":
     default:
