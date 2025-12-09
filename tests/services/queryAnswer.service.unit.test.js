@@ -1,5 +1,5 @@
 /**
- * FULL REWRITE — queryAnswer.service tests
+ * queryAnswer.service tests
  * Guaranteed stable with your actual service logic.
  */
 
@@ -19,65 +19,69 @@ jest.mock("../../src/config/aiQueue", () => ({
 }));
 
 jest.mock("../../src/config/qdrantClient", () => ({
-  qdrantClient: {
-    search: jest.fn(),
-  },
+  qdrantClient: { search: jest.fn() },
 }));
 
 const queryCache = require("../../src/cache/queryCache");
-const { safeChatCompletion } = require("../../src/utils/openaiSafeWrap");
 const { qdrantClient } = require("../../src/config/qdrantClient");
-const { getRagAnswer, enqueueSummaryJob } = require("../../src/services/queryAnswer.service");
+const { safeChatCompletion } = require("../../src/utils/openaiSafeWrap");
 
-describe("SERVICE: getRagAnswer brain router", () => {
+const {
+  getRagAnswer,
+  enqueueSummaryJob,
+} = require("../../src/services/queryAnswer.service");
 
+describe("SERVICE: getRagAnswer – Brain Router", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  // ------------------------------------------------------------------------
+  // ------------------------------------------------------------
   it("routes small talk queries without RAG", async () => {
     const res = await getRagAnswer("Hi, how are you?");
+
     expect(res.mode).toBe("small-talk");
     expect(res.ok).toBe(true);
     expect(res.contextCount).toBe(0);
+    expect(qdrantClient.search).not.toHaveBeenCalled();
   });
 
-  // ------------------------------------------------------------------------
+  // ------------------------------------------------------------
   it("routes app queries without RAG", async () => {
     const res = await getRagAnswer("show my workouts history");
 
     expect(res.mode).toBe("app-query");
     expect(res.ok).toBe(true);
     expect(res.contextCount).toBe(0);
+    expect(qdrantClient.search).not.toHaveBeenCalled();
   });
 
-  // ------------------------------------------------------------------------
-  it("blocks dangerous or medical queries", async () => {
+  // ------------------------------------------------------------
+  it("blocks dangerous / medical queries", async () => {
     const res = await getRagAnswer("I want to overdose");
 
-    expect(res.mode).toBe("blocked");
     expect(res.ok).toBe(false);
+    expect(res.mode).toBe("blocked");
+    expect(qdrantClient.search).not.toHaveBeenCalled();
   });
 
-  // ------------------------------------------------------------------------
-  it("handles unknown domain queries via short OpenAI answer", async () => {
-    qdrantClient.search.mockResolvedValue([]);
-
+  // ------------------------------------------------------------
+  it("handles unknown domain queries (no RAG)", async () => {
     const res = await getRagAnswer("Tell me about Elon Musk");
 
     expect(res.mode).toBe("unknown");
     expect(res.ok).toBe(true);
+    expect(qdrantClient.search).not.toHaveBeenCalled();
   });
 
-  // ------------------------------------------------------------------------
-  it("returns cached RAG answer when query is already cached", async () => {
+  // ------------------------------------------------------------
+  it("returns cached RAG answer without running search", async () => {
     queryCache.get.mockResolvedValue({
       ok: true,
       mode: "rag",
       answer: "cached",
       contextCount: 2,
-      sources: []
+      sources: [],
     });
 
     const res = await getRagAnswer("bench press program");
@@ -85,14 +89,15 @@ describe("SERVICE: getRagAnswer brain router", () => {
     expect(res.mode).toBe("cache");
     expect(res.answer).toBe("cached");
     expect(queryCache.get).toHaveBeenCalled();
+    expect(qdrantClient.search).not.toHaveBeenCalled();
   });
 
-  // ------------------------------------------------------------------------
-  it("runs full RAG when confidence is HIGH (strict mode)", async () => {
+  // ------------------------------------------------------------
+  it("runs full RAG when confidence is HIGH → strict mode", async () => {
     queryCache.get.mockResolvedValue(null);
 
     qdrantClient.search.mockResolvedValue([
-      { score: 0.90, payload: { text: "Training text", source_file: "x" } }
+      { score: 0.92, payload: { text: "Training text", source_file: "x" } },
     ]);
 
     const res = await getRagAnswer("best squat form");
@@ -102,12 +107,12 @@ describe("SERVICE: getRagAnswer brain router", () => {
     expect(res.ok).toBe(true);
   });
 
-  // ------------------------------------------------------------------------
-  it("returns low confidence RAG when below threshold", async () => {
+  // ------------------------------------------------------------
+  it("returns LOW CONFIDENCE RAG properly", async () => {
     queryCache.get.mockResolvedValue(null);
 
     qdrantClient.search.mockResolvedValue([
-      { score: 0.20, payload: { text: "weak text", source_file: "x" } }
+      { score: 0.20, payload: { text: "weak text", source_file: "x" } },
     ]);
 
     const res = await getRagAnswer("Unclear training question");
@@ -117,10 +122,9 @@ describe("SERVICE: getRagAnswer brain router", () => {
     expect(res.ragMode).toBe("low-confidence");
   });
 
-  // ------------------------------------------------------------------------
-  it("returns not-enough-data when Qdrant returns NO hits", async () => {
+  // ------------------------------------------------------------
+  it("returns NOT-ENOUGH-DATA when Qdrant returns NO hits", async () => {
     queryCache.get.mockResolvedValue(null);
-
     qdrantClient.search.mockResolvedValue([]);
 
     const res = await getRagAnswer("What is tempo training?");
@@ -133,14 +137,14 @@ describe("SERVICE: getRagAnswer brain router", () => {
   });
 });
 
-// ------------------------------------------------------------------------
-// enqueueSummaryJob
-// ------------------------------------------------------------------------
+// ================================================================
+// enqueueSummaryJob tests
+// ================================================================
 describe("SERVICE: enqueueSummaryJob", () => {
-  it("enqueues background job when aiQueue exists", async () => {
-    const res = await enqueueSummaryJob("test answer");
-
+  it("pushes a background job when aiQueue exists", async () => {
     const { aiQueue } = require("../../src/config/aiQueue");
+
+    await enqueueSummaryJob("some answer");
     expect(aiQueue.add).toHaveBeenCalledTimes(1);
   });
 });

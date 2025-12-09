@@ -85,6 +85,7 @@ function classifyDomain(query) {
     "push day", "pull day", "leg day",
     "bench press", "squat", "deadlift",
     "sets", "reps", "training program",
+    "training", "tempo training"
   ];
 
   const nutritionWords = [
@@ -457,7 +458,12 @@ async function getRagAnswer(input) {
       return Promise.race([
         answerWithRag(query, route.domain),
         timeoutPromise(90000)
-      ]).catch(err => {
+      ]).then(res => {
+        if(res.ragMode === "low-confidence") return res;
+        if (res.contextCount === 0) return res;
+        return res;
+      })
+      .catch(err => {
         if (err.message.startsWith("TIMEOUT_")) {
           logger.warn("RAG timed out after 90 seconds");
           return {
