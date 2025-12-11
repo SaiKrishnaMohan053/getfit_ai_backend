@@ -75,18 +75,19 @@ describe("ROUTE: POST /api/query-answer", () => {
     expect(res.body.ok).toBe(false);
   });
 
-  it("handles Qdrant failure with fallback response", async () => {
+  it("handles Qdrant failure with graceful fallback", async () => {
     const { qdrantClient } = require("../../src/config/qdrantClient");
     qdrantClient.search.mockRejectedValueOnce(
-        new Error("qdrant connection lost")
+      new Error("qdrant connection lost")
     );
 
     const res = await request(app)
-        .post("/api/query-answer")
-        .send({ query: "leg day workout" });
+      .post("/api/query-answer")
+      .send({ query: "leg day workout" });
 
-    expect(res.statusCode).toBe(500);   // correct behavior
-    expect(res.body).toHaveProperty("error");
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.answer).toMatch(/trainer library|went wrong|try again/i);
   });
 
   it("handles OpenAI failure via safeChatCompletion fallback", async () => {
