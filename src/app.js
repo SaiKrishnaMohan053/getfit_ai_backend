@@ -19,6 +19,7 @@ const queueRouter = require("./routes/queue.routes");
 const metricRoutes = require("./routes/metrics.routes");
 const healthMemoryRouter = require("./routes/healthMemory.routes");
 const queueStatusRouter = require("./routes/queueStatus.routes");
+const debugRouter = require("./routes/debug.routes");
 
 const errorHandler = require("./middleware/errorHandler");
 
@@ -84,6 +85,7 @@ app.use("/api", healthRouter);
 app.use("/api", healthMemoryRouter);
 app.use("/api", queueStatusRouter);
 app.use("/", testRouter);
+app.use("/api/debug", debugRouter);
 
 // Fallback for unknown routes
 app.use((req, res, next) => {
