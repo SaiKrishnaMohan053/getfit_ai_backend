@@ -25,6 +25,7 @@ const errorHandler = require("./middleware/errorHandler");
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1);
 
 // core middleware
 app.use(cors());
