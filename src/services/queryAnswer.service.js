@@ -256,7 +256,7 @@ async function answerWithRag(query, domain) {
 
   // Search Qdrant with payload
   const results = await qdrantClient.search(config.QDRANT_COLLECTION, {
-    vector: queryVector,
+    query_vector: queryVector,
     with_payload: true,
     limit: RAG_TOP_K,
   });
