@@ -238,6 +238,7 @@ async function answerWithRag(query, domain) {
   logger.info(`RAG invoked for domain=${domain}, query="${query}"`);
 
   // Cache check (Redis via queryCache helper)
+  logger.info("Step 1:Checking RAG cache");
   const cached = await queryCache.get(query);
   if (cached) {
     logger.info("RAG cache hit");
@@ -251,15 +252,20 @@ async function answerWithRag(query, domain) {
     return { ...cached, mode: "cache" };
   }
 
+  try {
   // Embed query
+  logger.info("Step 2:generating Embedding query");
   const [queryVector] = await embedText([query]);
+  logger.info("Step 2 done: Embedding generated");
 
   // Search Qdrant with payload
+  logger.info("Step 3:searching Qdrant vector DB");
   const results = await qdrantClient.search(config.QDRANT_COLLECTION, {
-    query_vector: queryVector,
+    vector: queryVector,
     with_payload: true,
     limit: RAG_TOP_K,
   });
+  logger.info("Step 3 done: Qdrant returned ${results.length || 0} results");
 
   if (!results || results.length === 0) {
     logger.warn("RAG search returned no results");
@@ -287,6 +293,7 @@ async function answerWithRag(query, domain) {
   } else {
     confidence = "low";
   }
+  logger.info(`RAG confidence=${confidence} topScore=${topScore.toFixed(3)} thresholds=(weak:${RAG_WEAK_THRESHOLD}, strict:${RAG_STRICT_THRESHOLD})`);
 
   // Low confidence → we still refuse, same behavior as before
   if (confidence === "low") {
@@ -318,6 +325,7 @@ async function answerWithRag(query, domain) {
   }
 
   // Build context string from top chunks
+  logger.info("Step 4:building context from top chunks");
   const context = results
     .map((r, i) => {
       const text = r.payload?.text || "";
@@ -357,6 +365,7 @@ async function answerWithRag(query, domain) {
   ].join("\n");
 
   // Call OpenAI with metrics (latency tracked inside client)
+  logger.info("Step 5:calling OpenAI chat for final answer");
   const completion = await safeChatCompletion({
     model: "gpt-4o-mini",
     temperature: 0.35,
@@ -365,6 +374,7 @@ async function answerWithRag(query, domain) {
       { role: "user", content: userPrompt },
     ],
   });
+  logger.info("Step 5 done: OpenAI returned final answer");
 
   const answer = completion.choices?.[0]?.message?.content || "The AI engine couldn’t generate a response right now. Please try again.";
 
@@ -394,6 +404,17 @@ async function answerWithRag(query, domain) {
   }
 
   return response;
+  } catch (err) {
+    logger.error(`RAG processing failed: ${err.message}`);
+    return {
+      ok: false,
+      mode: "rag-error",
+      domain,
+      answer: "Something went wrong while using the trainer library. Please try again later.",
+      contextCount: 0,
+      sources: [],
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
