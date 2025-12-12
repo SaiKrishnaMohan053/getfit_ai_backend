@@ -19,7 +19,7 @@ async function embedText(texts) {
   }
 
   const response = await openai.embeddings.create({
-    model: "text-embedding-3-large",
+    model: "text-embedding-3-small",
     input: texts,
   });
 

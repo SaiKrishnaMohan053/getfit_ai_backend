@@ -235,19 +235,17 @@ async function handleUnknownQuery(query) {
 }
 
 async function answerWithRag(query, domain) {
+  const start = Date.now();
   logger.info(`[QDRANT] RAG invoked for domain=${domain}, query="${query}"`);
 
   // Cache check (Redis via queryCache helper)
   logger.info("Step 1:Checking RAG cache");
-  const cached = await queryCache.get(query);
+  const cacheKey = `${domain}:${query.toLowerCase().trim()}`;
+  const cached = await queryCache.get(cacheKey);
   if (cached) {
     logger.info("RAG cache hit");
 
-    try {
-      await enqueueSummaryJob(cached.answer);
-    } catch (err) {
-      logger.warn("Failed to enqueue summary job (cache hit): " + err.message);
-    }
+    enqueueSummaryJob(cached.answer).catch(()=>{});
 
     return { ...cached, mode: "cache" };
   }
@@ -255,7 +253,11 @@ async function answerWithRag(query, domain) {
   try {
   // Embed query
   logger.info("Step 2:generating Embedding query");
-  const [queryVector] = await embedText([query]);
+  const embeddingPromise = embedText([query]);
+  const [queryVector] = await Promise.race([
+    embeddingPromise,
+    timeoutPromise(4000),
+  ]);
   logger.info("Step 2 done: Embedding generated");
 
   // Search Qdrant with payload
@@ -271,7 +273,7 @@ async function answerWithRag(query, domain) {
     searchPromise,
     timeoutPromise(5000),
   ]);
-  logger.info("Step 3 done: Qdrant returned ${results?.length || 0} results");
+  logger.info(`Step 3 done: Qdrant returned ${results?.length || 0} results`);
 
   if (!results || results.length === 0) {
     logger.warn("RAG search returned no results");
@@ -284,7 +286,8 @@ async function answerWithRag(query, domain) {
       sources: [],
       domain,
     };
-    await queryCache.set(query, response);
+    await queryCache.set(cacheKey, response);
+    logger.info(`RAG processing took ${Date.now() - start}ms`);
     return response;
   }
 
@@ -326,7 +329,7 @@ async function answerWithRag(query, domain) {
       })),
     };
 
-    await queryCache.set(query, response);
+    await queryCache.set(cacheKey, response);
     return response;
   }
 
@@ -380,15 +383,38 @@ async function answerWithRag(query, domain) {
 
   // Call OpenAI with metrics (latency tracked inside client)
   logger.info("Step 5:calling OpenAI chat for final answer");
-  const completion = await safeChatCompletion({
-    model: "gpt-4o-mini",
-    temperature: 0.35,
-    max_tokens: Number(process.env.RAG_MAX_TOKENS || "350"),  
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  });
+  let completion;
+
+  try {
+    completion = await Promise.race([
+      safeChatCompletion({
+        model: "gpt-4o-mini",
+        temperature: 0.35,
+        max_tokens: Number(process.env.RAG_MAX_TOKENS || "350"),
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+      timeoutPromise(7000),
+    ]);
+  } catch (err) {
+    if (err.message.startsWith("TIMEOUT_")) {
+      logger.warn("OpenAI timed out at 7s, returning safe fallback");
+      completion = {
+        choices: [
+          {
+            message: {
+              content:
+                "I have relevant trainer information, but generating the final answer is taking longer than expected. Please try again shortly.",
+            },
+          },
+        ],
+      };
+    } else {
+      throw err;
+    }
+  }
   logger.info("Step 5 done: OpenAI returned final answer");
 
   const answer = completion.choices?.[0]?.message?.content || "The AI engine couldn’t generate a response right now. Please try again.";
@@ -410,16 +436,13 @@ async function answerWithRag(query, domain) {
   };
 
   // Cache successful RAG answer
-  await queryCache.set(query, response);
+  await queryCache.set(cacheKey, response);
 
-  try {
-    await enqueueSummaryJob(answer);
-  } catch (err) {
-    logger.warn(`Failed to enqueue summary job: ${err.message}`);
-  }
+  enqueueSummaryJob(answer).catch(() => {});
 
   return response;
   } catch (err) {
+    logger.error(`RAG failed after ${Date.now() - start}ms: ${err.message}`);
     logger.error(`RAG processing failed: ${err.message}`);
     return {
       ok: false,
