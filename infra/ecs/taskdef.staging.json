@@ -48,10 +48,6 @@
           "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi:OPENAI_API_KEY::"
         },
         {
-          "name": "QDRANT_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi:QDRANT_API_KEY::"
-        },
-        {
           "name": "QDRANT_URL",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi:QDRANT_URL::"
         },
