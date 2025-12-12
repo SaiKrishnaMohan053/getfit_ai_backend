@@ -15,12 +15,12 @@ const { logger } = require("../utils/logger");
 const queryCache = require("../cache/queryCache");
 const { aiQueue } = require("../config/aiQueue");
 
-const RAG_TOP_K = Number(process.env.RAG_TOP_K || "5");
+const RAG_TOP_K = Number(process.env.RAG_TOP_K || "3");
 const RAG_STRICT_THRESHOLD = Number(
-  process.env.RAG_STRICT_THRESHOLD || "0.70"
+  process.env.RAG_STRICT_THRESHOLD || "0.80"
 );
 const RAG_WEAK_THRESHOLD = Number(
-  process.env.RAG_WEAK_THRESHOLD || "0.45"
+  process.env.RAG_WEAK_THRESHOLD || "0.70"
 );
 
 // ---------------------------------------------------------------------------
@@ -260,7 +260,7 @@ async function answerWithRag(query, domain) {
 
   // Search Qdrant with payload
   logger.info("Step 3:searching Qdrant vector DB");
-  const searchPromise = await qdrantClient.search(config.QDRANT_COLLECTION, {
+  const searchPromise = qdrantClient.search(config.QDRANT_COLLECTION, {
     vector: queryVector,
     with_payload: true,
     limit: RAG_TOP_K,
@@ -271,7 +271,7 @@ async function answerWithRag(query, domain) {
     searchPromise,
     timeoutPromise(5000),
   ]);
-  logger.info("Step 3 done: Qdrant returned ${results.length || 0} results");
+  logger.info("Step 3 done: Qdrant returned ${results?.length || 0} results");
 
   if (!results || results.length === 0) {
     logger.warn("RAG search returned no results");
@@ -332,12 +332,20 @@ async function answerWithRag(query, domain) {
 
   // Build context string from top chunks
   logger.info("Step 4:building context from top chunks");
-  const context = results
+
+  const MAX_CHUNK_CHARS = Number(process.env.RAG_MAX_CHUNK_CHARS || "1200");
+  const MAX_CONTEXT_CHARS = Number(process.env.RAG_MAX_CONTEXT_CHARS || "4000");
+
+  let context = results
     .map((r, i) => {
-      const text = r.payload?.text || "";
+      const text = String(r.payload?.text || "").slice(0, MAX_CHUNK_CHARS);
       return `(${i + 1}) ${text}`;
     })
     .join("\n---\n");
+
+  if (context.length > MAX_CONTEXT_CHARS) {
+    context = context.slice(0, MAX_CONTEXT_CHARS);
+  }
 
   // System prompt now depends on confidence
   let systemPrompt;
@@ -375,6 +383,7 @@ async function answerWithRag(query, domain) {
   const completion = await safeChatCompletion({
     model: "gpt-4o-mini",
     temperature: 0.35,
+    max_tokens: Number(process.env.RAG_MAX_TOKENS || "350"),  
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -484,7 +493,7 @@ async function getRagAnswer(input) {
     case "domainQuestion":
       return Promise.race([
         answerWithRag(query, route.domain),
-        timeoutPromise(90000)
+        timeoutPromise(Number(process.env.RAG_HTTP_TIMEOUT_MS || "15000"))
       ]).then(res => {
         if(res.ragMode === "low-confidence") return res;
         if (res.contextCount === 0) return res;
@@ -492,7 +501,7 @@ async function getRagAnswer(input) {
       })
       .catch(err => {
         if (err.message.startsWith("TIMEOUT_")) {
-          logger.warn("RAG timed out after 90 seconds");
+          logger.warn("RAG timed out at the HTTP layer");
           return {
             ok: false,
             mode: "timeout",
