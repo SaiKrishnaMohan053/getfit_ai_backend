@@ -22,7 +22,7 @@ async function safeChatCompletion(options) {
     // Hard cap OpenAI wait time (e.g. 20s)
     const result = await Promise.race([
       openai.chatCompletionWithMetrics(options),
-      openaiTimeout(20000),
+      openaiTimeout(8000),
     ]);
 
     logger.info(
