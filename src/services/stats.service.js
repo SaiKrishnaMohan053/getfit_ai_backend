@@ -10,7 +10,9 @@ const { logger } = require("../utils/logger");
  */
 async function getCollectionStats() {
   try {
-    const info = await qdrantClient.getCollection(config.QDRANT_COLLECTION);
+    const fetchCollectionInfo = () => qdrantClient.getCollection(config.QDRANT_COLLECTION);
+
+    const info = await fetchCollectionInfo();
 
     // Normalize fields for API consumers
     const stats = {
@@ -21,12 +23,12 @@ async function getCollectionStats() {
     };
 
     logger.info(
-      `Qdrant collection "${stats.name}" loaded: ${stats.vectors} vectors`
+      `[Qdrant] collection "${stats.name}" loaded: ${stats.vectors} vectors`
     );
 
     return stats;
   } catch (err) {
-    logger.error(`Failed to fetch Qdrant stats: ${err.message}`);
+    logger.error(`[Qdrant] Failed to fetch Qdrant stats: ${err.message}`);
     throw new Error("Unable to fetch vector store stats");
   }
 }

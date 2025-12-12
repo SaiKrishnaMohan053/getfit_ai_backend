@@ -4,10 +4,18 @@ jest.mock("../../src/config/qdrantClient", () => ({
     upsert: jest.fn().mockResolvedValue({ status: "ok" }),
     scroll: jest.fn().mockResolvedValue({ points: [] }),
     delete: jest.fn().mockResolvedValue({ status: "ok" }),
+    search: jest.fn().mockResolvedValue([]),
+    count: jest.fn().mockResolvedValue({ count: 0 }),
     getCollections: jest.fn().mockResolvedValue({
-      collections: ["getfit_staging"],
+      collections: [{ name: "getfit_staging" }],
     }),
-  }
+    getCollection: jest.fn().mockResolvedValue({
+      name: "getfit_staging",
+      points_count: 0,
+      payload_schema: {},
+      config: { params: { vectors: { size: 3072 } } },
+    }),
+  },
 }));
 
 // Global mock for OpenAI + embedding

@@ -34,7 +34,7 @@
         { "name": "ENABLE_METRICS", "value": "true" },
         { "name": "ENABLE_BACKGROUND_JOBS", "value": "true" },
 
-        { "name": "QDRANT_COLLECTION", "value": "getfit_staging" },
+        { "name": "QDRANT_COLLECTION", "value": "ecs_test" },
 
         { "name": "REDIS_HOST", "value": "getfit-redis-9y9aob.serverless.use1.cache.amazonaws.com" },
         { "name": "REDIS_PORT", "value": "6379" },

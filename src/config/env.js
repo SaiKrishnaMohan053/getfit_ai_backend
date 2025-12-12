@@ -18,7 +18,6 @@ const config = {
 
   // Qdrant
   QDRANT_URL: process.env.QDRANT_URL,
-  QDRANT_API_KEY: process.env.QDRANT_API_KEY,
   QDRANT_COLLECTION: process.env.QDRANT_COLLECTION || "getfit_staging",
 
   // OpenAI
@@ -33,8 +32,15 @@ const config = {
  * Warn if critical environment variables are missing.
  * This is a runtime safety check; not for strict enforcement.
  */
-if (!config.QDRANT_URL || !config.QDRANT_API_KEY || !config.OPENAI_API_KEY) {
-  console.warn("Missing required environment variables (Qdrant/OpenAI).");
+const requiredVars = [
+  "QDRANT_URL",
+  "OPENAI_API_KEY",
+];
+
+for (const key of requiredVars) {
+  if (!config[key]) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
 }
 
 module.exports = { config };

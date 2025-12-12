@@ -18,7 +18,7 @@ async function getTrainStatus() {
       indexed_fields: Object.keys(info.payload_schema || {}),
     };
   } catch (err) {
-    logger.error(`Failed to fetch training status: ${err.message}`);
+    logger.error(`[Qdrant] Failed to fetch training status: ${err.message}`);
     throw new Error("Unable to fetch training status");
   }
 }
@@ -34,26 +34,35 @@ async function getTrainStatus() {
  */
 async function listTrainedDocuments() {
   try {
-    const res = await qdrantClient.scroll(config.QDRANT_COLLECTION, {
-      limit: 10_000,
-      with_payload: true,
-      with_vectors: false,
-    });
-
     const documents = {};
+    let offset = null;
 
-    for (const point of res.points) {
-      const file = point.payload?.source_file;
-      if (!file) continue;
-      documents[file] = (documents[file] || 0) + 1;
-    }
+    do {
+      const res = await qdrantClient.scroll(
+        config.QDRANT_COLLECTION,
+        {
+          limit: 1000,        
+          offset,
+          with_payload: true,
+          with_vectors: false,
+        }
+      );
+
+      for (const point of res.points) {
+        const file = point.payload?.source_file;
+        if (!file) continue;
+        documents[file] = (documents[file] || 0) + 1;
+      }
+
+      offset = res.next_page_offset;
+    } while (offset);
 
     return Object.entries(documents).map(([source_file, count]) => ({
       source_file,
       count,
     }));
   } catch (err) {
-    logger.error(`Failed to list trained documents: ${err.message}`);
+    logger.error(`[Qdrant] Failed to list trained documents: ${err.message}`);
     throw new Error("Unable to list trained documents");
   }
 }

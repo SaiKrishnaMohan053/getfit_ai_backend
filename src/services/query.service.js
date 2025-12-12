@@ -12,37 +12,51 @@ const { logger } = require("../utils/logger");
  * @param {Object} params
  * @param {string} params.query
  * @param {number} [params.topK=6]
+ * @param {number} [params.scoreThreshold=0.2]
  */
-async function semanticQuery({ query, topK = 6 }) {
+async function semanticQuery({
+  query,
+  topK = 6,
+  scoreThreshold = 0.2,
+}) {
   try {
-    logger.info(`Semantic query: ${query}`);
+    logger.info(
+      `[Qdrant] Semantic query (len=${query.length}, topK=${topK})`
+    );
 
     // Generate embedding for query
     const [vector] = await embedText([query]);
 
     // Search vectors in Qdrant
-    const results = await qdrantClient.search(config.QDRANT_COLLECTION, {
-      vector,
-      limit: topK,
-    });
+    const results = await qdrantClient.search(
+      config.QDRANT_COLLECTION,
+      {
+        vector,
+        limit: topK,
+        with_payload: true,
+        score_threshold: scoreThreshold,
+      }
+    );
 
-    logger.info(`Semantic query returned ${results.length} results`);
+    logger.info(
+      `[Qdrant] Semantic query returned ${results.length} results`
+    );
+
     return results;
   } catch (err) {
-    // Consistent, normalized network-related error handling
     const message = err.message || "";
 
     if (message.includes("ECONNREFUSED")) {
-      logger.error("Qdrant service unavailable (connection refused)");
+      logger.error("[Qdrant] Connection refused");
       throw new Error("Qdrant service unavailable");
     }
 
     if (message.includes("ETIMEDOUT")) {
-      logger.error("Semantic query timed out");
-      throw new Error("Query timed out");
+      logger.error("[Qdrant] Query timed out");
+      throw new Error("Semantic query timed out");
     }
 
-    logger.error(`Semantic query failed: ${message}`);
+    logger.error(`[Qdrant] Semantic query failed: ${message}`);
     throw err;
   }
 }

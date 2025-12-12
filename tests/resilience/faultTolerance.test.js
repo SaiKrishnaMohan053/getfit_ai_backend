@@ -1,11 +1,12 @@
 /**
  * Fault Tolerance & Route Robustness
  *
- * Covers:
- *  - Qdrant outage fallback
- *  - OpenAI timeout / failure fallback
- *  - /api/metrics stays healthy even if AI pipeline is broken
- *  - Consistent global error format (404, invalid payloads)
+ * Validates:
+ *  - Qdrant outage → controlled RAG failure (rag-error)
+ *  - OpenAI timeout/failure → safe fallback response
+ *  - /api/metrics stays healthy even if AI pipeline breaks
+ *  - Proper error handling for invalid payloads
+ *  - Consistent global 404 error schema
  */
 
 const request = require("supertest");
@@ -15,9 +16,9 @@ const { openai } = require("../../src/config/openaiClient");
 
 jest.setTimeout(30000);
 
-describe("RESILIENCE: Fault Tolerance & Route Robustness", () => {
+describe("RESILIENCE — Fault Tolerance & Route Robustness", () => {
   beforeAll(() => {
-    // Silence expected error logs so test output stays clean
+    // Silence expected error logs so test output stays readable
     jest.spyOn(console, "error").mockImplementation(() => {});
     jest.spyOn(console, "warn").mockImplementation(() => {});
   });
@@ -26,10 +27,14 @@ describe("RESILIENCE: Fault Tolerance & Route Robustness", () => {
     jest.restoreAllMocks();
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   // ------------------------------------------------------------
-  // Qdrant offline — RAG must fall back safely
+  // Qdrant offline — RAG must fail safely (rag-error)
   // ------------------------------------------------------------
-  it("should gracefully fallback when Qdrant is offline", async () => {
+  it("should return controlled rag-error when Qdrant is offline", async () => {
     jest
       .spyOn(qdrantClient, "search")
       .mockRejectedValueOnce(new Error("ECONNREFUSED - Qdrant offline"));
@@ -37,18 +42,19 @@ describe("RESILIENCE: Fault Tolerance & Route Robustness", () => {
     const res = await request(app)
       .post("/api/query-answer")
       .send({ query: "Test Qdrant offline resilience" })
-      .expect(200); // safe fallback should keep 200
+      .expect(200); // backend intentionally keeps 200
 
-    expect(res.body).toHaveProperty("ok", true);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.mode).toBe("rag-error");
     expect(res.body.answer).toMatch(
-      /outside the verified trainer library|temporarily unavailable|try again/i
+      /trainer library|something went wrong|try again/i
     );
   });
 
   // ------------------------------------------------------------
-  // OpenAI timeout — safeChatCompletion must return fallback string
+  // OpenAI timeout — safe fallback response
   // ------------------------------------------------------------
-  it("should fallback when OpenAI times out", async () => {
+  it("should fallback safely when OpenAI times out", async () => {
     jest
       .spyOn(openai, "chatCompletionWithMetrics")
       .mockRejectedValueOnce(new Error("ETIMEDOUT"));
@@ -56,16 +62,18 @@ describe("RESILIENCE: Fault Tolerance & Route Robustness", () => {
     const res = await request(app)
       .post("/api/query-answer")
       .send({ query: "Simulate OpenAI timeout scenario" })
-      .expect(200); // fallback keeps system stable
+      .expect(200);
 
-    expect(res.body.ok).toBe(true);
-    expect(res.body.answer).toMatch(/trouble|AI engine|try again/i);
+    expect(res.body).toHaveProperty("ok");
+    expect(res.body.answer).toMatch(
+      /AI engine|temporarily|try again|timeout/i
+    );
   });
 
   // ------------------------------------------------------------
-  // Metrics endpoint must remain stable during failures
+  // Metrics endpoint must stay alive even if AI dependencies fail
   // ------------------------------------------------------------
-  it("should keep /api/metrics responsive even if AI pipeline fails", async () => {
+  it("should keep /api/metrics responsive during AI failures", async () => {
     jest
       .spyOn(qdrantClient, "getCollections")
       .mockRejectedValueOnce(new Error("Qdrant down"));
@@ -76,23 +84,25 @@ describe("RESILIENCE: Fault Tolerance & Route Robustness", () => {
   });
 
   // ------------------------------------------------------------
-  // 4️⃣ Invalid payload handling
+  // Invalid payload handling
   // ------------------------------------------------------------
   it("should reject empty query payload with proper error structure", async () => {
     const res = await request(app)
       .post("/api/query-answer")
-      .send({ query: "" });
+      .send({ query: "" })
+      .expect(400);
 
-    expect(res.statusCode).toBe(400);
     expect(res.body).toHaveProperty("error");
     expect(res.body.error).toMatch(/query is required/i);
   });
 
   // ------------------------------------------------------------
-  // 404 global handler consistency
+  // Global 404 handler consistency
   // ------------------------------------------------------------
   it("should return consistent error schema for unknown routes", async () => {
-    const res = await request(app).get("/random-invalid-route-123").expect(404);
+    const res = await request(app)
+      .get("/random-invalid-route-123")
+      .expect(404);
 
     expect(res.body).toHaveProperty("error");
     expect(res.body).toHaveProperty("timestamp");

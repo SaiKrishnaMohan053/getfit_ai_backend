@@ -43,14 +43,11 @@ describe("SERVICE INTEGRATION TESTS", () => {
 
       expect(result).toBeDefined();
       expect(result).toHaveProperty("collections");
-
-      console.log("Qdrant Collections:", result.collections.map(c => c.name));
     });
 
     it("should fail gracefully with an invalid Qdrant URL", async () => {
       const badClient = new QdrantClient({
         url: "https://invalid-qdrant-url.fake:6333",
-        apiKey: "WRONG_KEY",
         timeout: 2000,
       });
 

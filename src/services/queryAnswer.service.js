@@ -235,7 +235,7 @@ async function handleUnknownQuery(query) {
 }
 
 async function answerWithRag(query, domain) {
-  logger.info(`RAG invoked for domain=${domain}, query="${query}"`);
+  logger.info(`[QDRANT] RAG invoked for domain=${domain}, query="${query}"`);
 
   // Cache check (Redis via queryCache helper)
   logger.info("Step 1:Checking RAG cache");
@@ -260,11 +260,17 @@ async function answerWithRag(query, domain) {
 
   // Search Qdrant with payload
   logger.info("Step 3:searching Qdrant vector DB");
-  const results = await qdrantClient.search(config.QDRANT_COLLECTION, {
+  const searchPromise = await qdrantClient.search(config.QDRANT_COLLECTION, {
     vector: queryVector,
     with_payload: true,
     limit: RAG_TOP_K,
+    score_threshold: RAG_WEAK_THRESHOLD,
   });
+  
+  const results = await Promise.race([
+    searchPromise,
+    timeoutPromise(5000),
+  ]);
   logger.info("Step 3 done: Qdrant returned ${results.length || 0} results");
 
   if (!results || results.length === 0) {

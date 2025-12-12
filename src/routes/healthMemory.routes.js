@@ -7,21 +7,20 @@ const { logger } = require("../utils/logger");
 const router = Router();
 
 /**
- * Runtime memory & event-loop measurement endpoint.
+ * Runtime memory & event-loop metrics.
  * Used by:
  * - Prometheus
  * - Grafana dashboards
- * - ECS/K8s alarms
- * - QA soak/stress tests
+ * - ECS / CloudWatch alarms
+ * - Soak & stress tests
  *
  * GET /api/health/memory
  */
 router.get("/health/memory", async (req, res, next) => {
   try {
-    // Capture current memory usage
     const mem = process.memoryUsage();
 
-    // Measure event-loop behavior over a 1 second window
+    // Measure event-loop delay over 1 second window
     const monitor = monitorEventLoopDelay({ resolution: 10 });
     monitor.enable();
 
@@ -31,12 +30,12 @@ router.get("/health/memory", async (req, res, next) => {
 
     return res.json({
       ok: true,
-      memory: {
-        rssMB: +(mem.rss / 1048576).toFixed(2),
-        heapUsedMB: +(mem.heapUsed / 1048576).toFixed(2),
-        heapTotalMB: +(mem.heapTotal / 1048576).toFixed(2),
+      memoryMB: {
+        rss: +(mem.rss / 1048576).toFixed(2),
+        heapUsed: +(mem.heapUsed / 1048576).toFixed(2),
+        heapTotal: +(mem.heapTotal / 1048576).toFixed(2),
       },
-      eventLoop: {
+      eventLoopSec: {
         p50: +(monitor.percentile(50) / 1e9).toFixed(4),
         p99: +(monitor.percentile(99) / 1e9).toFixed(4),
       },
@@ -45,7 +44,7 @@ router.get("/health/memory", async (req, res, next) => {
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    logger.error(`Health memory route failed: ${err.message}`);
+    logger.error(`[health/memory] ${err.message}`);
     next(err);
   }
 });

@@ -48,6 +48,8 @@ describe("SERVICE: semanticQuery", () => {
     expect(qdrantClient.search).toHaveBeenCalledWith("test_collection", {
       vector: [0.1, 0.2, 0.3],
       limit: 2,
+      with_payload: true,
+      score_threshold: 0.2,
     });
     expect(res).toBe(fakeResults);
   });
@@ -68,7 +70,7 @@ describe("SERVICE: semanticQuery", () => {
     qdrantClient.search.mockRejectedValue(new Error("ETIMEDOUT"));
 
     await expect(semanticQuery({ query: "slow query" })).rejects.toThrow(
-      "Query timed out"
+      "Semantic query timed out"
     );
   });
 

@@ -9,22 +9,22 @@ const router = express.Router();
 
 /**
  * GET /api/stats
- * Returns basic runtime statistics for monitoring and admin diagnostics.
- * This endpoint is not a health probe — it provides extended metadata.
+ * Extended runtime statistics (NOT a health probe).
  */
 router.get("/", async (req, res, next) => {
+  let qdrant = {
+    reachable: false,
+  };
+
   try {
-    let qdrantStatus = "unavailable";
+    // Lightweight connectivity check
+    await qdrantClient.getCollections();
+    qdrant.reachable = true;
+  } catch (err) {
+    logger.warn("[stats] Qdrant not reachable");
+  }
 
-    try {
-      const info = await qdrantClient.getCollections();
-      qdrantStatus = Array.isArray(info.collections)
-        ? info.collections.length
-        : "connected";
-    } catch (err) {
-      logger.warn("Qdrant unavailable during /api/stats");
-    }
-
+  try {
     const mem = process.memoryUsage();
 
     return res.json({
@@ -36,11 +36,11 @@ router.get("/", async (req, res, next) => {
         heapTotal: +(mem.heapTotal / 1048576).toFixed(2),
       },
       hostname: os.hostname(),
-      qdrant: qdrantStatus,
+      qdrant,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    logger.error(`Stats route error: ${err.message}`);
+    logger.error(`[stats] error: ${err.message}`);
     return next(err);
   }
 });

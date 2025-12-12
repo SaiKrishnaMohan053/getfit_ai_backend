@@ -136,25 +136,26 @@ async function trainDocument({ pdfBuffer, domain, source_file, version_tag }) {
 
     embedded += vectors.length;
 
+    const buildPayload = (text, index) => ({
+      text,
+      domain,
+      source_file,
+      version_tag: vtag,
+      chunk_index: index,
+      total_chunks: totalChunks,
+      created_at: new Date().toISOString(),
+    });
     // Build Qdrant points
     const points = batchChunks.map((c, i) => ({
       id: uuidv4(),
       vector: vectors[i],
-      payload: {
-        text: c,
-        domain,
-        source_file,
-        version_tag: vtag,
-        chunk_index: startIdx + i,
-        total_chunks: totalChunks,
-        created_at: new Date().toISOString(),
-      },
+      payload: buildPayload(c, startIdx + i),
     }));
 
     // Upsert with retry
     const upsertLabel = `Upsert ${label}`;
     await withRetry(
-      () => qdrantClient.upsert(config.QDRANT_COLLECTION, { points }),
+      () => qdrantClient.upsert(config.QDRANT_COLLECTION, { points, wait: true }),
       upsertLabel
     );
 

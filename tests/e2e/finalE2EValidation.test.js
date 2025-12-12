@@ -24,7 +24,7 @@ const app = require("../../src/app");
 
 const REPORT_FILE = "tests/reports/e2e_summary.json";
 
-describe("PHASE 7.0 — FINAL END-TO-END VALIDATION", () => {
+describe("FINAL END-TO-END VALIDATION", () => {
   const summary = {
     timestamp: new Date().toISOString(),
     health: null,
@@ -36,8 +36,8 @@ describe("PHASE 7.0 — FINAL END-TO-END VALIDATION", () => {
   // -------------------------------------------------------------
   // 1) HEALTH CHECK
   // -------------------------------------------------------------
-  it("should confirm /api/metrics-health is operational", async () => {
-    const res = await request(app).get("/api/metrics-health").expect(200);
+  it("should confirm /api/health/deps is operational", async () => {
+    const res = await request(app).get("/api/health/deps").expect(200);
 
     expect(res.body.ok).toBe(true);
     expect(res.body.services.qdrant).toBe(true);

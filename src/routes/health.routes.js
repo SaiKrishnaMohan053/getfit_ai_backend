@@ -1,5 +1,3 @@
-// src/routes/health.routes.js
-
 const express = require("express");
 const os = require("os");
 const { qdrantClient } = require("../config/qdrantClient");
@@ -9,42 +7,50 @@ const { config } = require("../config/env");
 const router = express.Router();
 
 /**
- * Basic system health check.
- * Validates connectivity to required external services:
- * - Qdrant vector DB
- * - OpenAI API
- *
- * This route is used for ALB/ECS/K8s health probes.
+ * Liveness check (USED BY ALB / ECS)
+ * Must be FAST and NEVER hit external services.
  */
-router.get("/health", async (req, res) => {
-  try {
-    // verify connectivity
-    await qdrantClient.getCollections();
-    await openai.models.list();
-
-    return res.json({
-      ok: true,
-      message: "All systems operational",
-      services: {
-        qdrant: true,
-        openai: true,
-        collection: config.QDRANT_COLLECTION,
-      },
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    return res.status(503).json({
-      ok: false,
-      message: "One or more services unreachable",
-      error: err.message,
-      timestamp: new Date().toISOString(),
-    });
-  }
+router.get("/health", (req, res) => {
+  return res.json({
+    ok: true,
+    status: "alive",
+    service: "backend",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 /**
- * System runtime metrics for dashboards.
- * Includes memory, CPU, and load averages.
+ * Dependency readiness check (manual / internal)
+ * Verifies connectivity to external systems.
+ */
+router.get("/health/deps", async (req, res) => {
+  const status = {
+    qdrant: false,
+    openai: false,
+  };
+
+  try {
+    await qdrantClient.getCollections();
+    status.qdrant = true;
+  } catch (e) {}
+
+  try {
+    await openai.models.list();
+    status.openai = true;
+  } catch (e) {}
+
+  const ok = status.qdrant && status.openai;
+
+  return res.status(ok ? 200 : 503).json({
+    ok,
+    services: status,
+    collection: config.QDRANT_COLLECTION,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/**
+ * Runtime metrics (safe, internal)
  */
 router.get("/memory", (req, res) => {
   const mem = process.memoryUsage();

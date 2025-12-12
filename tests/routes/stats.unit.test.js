@@ -50,6 +50,6 @@ describe("ROUTE: GET /api/stats", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.qdrant).toBe("unavailable");
+    expect(res.body.qdrant).toEqual({reachable: false});
   });
 });

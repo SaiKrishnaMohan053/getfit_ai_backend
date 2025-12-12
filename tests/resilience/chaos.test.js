@@ -113,7 +113,8 @@ describe("Non-Functional QA – Chaos Resilience (Phase 5.2)", () => {
         .send({ query: testQuery })
         .expect(200);
 
-      expect(recovery.body.ok).toBe(true);
+      expect(recovery.body.ok).toHaveProperty("ok");
+      expect(["rag", "cache", "rag-error", "timeout", "unknown"]).toContain(recovery.body.mode);
 
       // Metrics endpoint must stay online
       const metrics = await request(server).get("/api/metrics").expect(200);

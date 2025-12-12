@@ -1,5 +1,5 @@
 // src/services/delete.service.js
-// Deletes all vectors in Qdrant matching a given source file
+// Deletes all vectors in Qdrant matching a given source_file
 
 const { qdrantClient } = require("../config/qdrantClient");
 const { config } = require("../config/env");
@@ -10,31 +10,41 @@ const { logger } = require("../utils/logger");
  * Returns a summary with the number of deleted vectors.
  */
 async function deleteBySource(source_file) {
+  const filter = {
+    must: [{ key: "source_file", match: { value: source_file } }],
+  };
+
   try {
-    logger.info(`Counting vectors for ${source_file} before deletion`);
+    // Count matching vectors
+    const { count = 0 } = await qdrantClient.count(
+      config.QDRANT_COLLECTION,
+      { filter }
+    );
 
-    // Count how many vectors exist with the given metadata
-    const countResult = await qdrantClient.count(config.QDRANT_COLLECTION, {
-      filter: { must: [{ key: "source_file", match: { value: source_file } }] },
-    });
+    if (count === 0) {
+      return {
+        ok: true,
+        deleted_source: source_file,
+        deleted_count: 0,
+      };
+    }
 
-    const total = countResult.count || 0;
-    logger.info(`Found ${total} vectors for ${source_file}`);
+    // Delete matching vectors
+    await qdrantClient.delete(config.QDRANT_COLLECTION, { filter });
 
-    // Delete all matching vectors
-    await qdrantClient.delete(config.QDRANT_COLLECTION, {
-      filter: { must: [{ key: "source_file", match: { value: source_file } }] },
-    });
-
-    logger.info(`Deleted ${total} vectors for ${source_file}`);
+    logger.info(
+      `[Qdrant] Deleted ${count} vectors for source_file=${source_file}`
+    );
 
     return {
       ok: true,
       deleted_source: source_file,
-      deleted_count: total,
+      deleted_count: count,
     };
   } catch (err) {
-    logger.error(`Deletion failed for ${source_file}: ${err.message}`);
+    logger.error(
+      `[Qdrant] Delete failed for source_file=${source_file}: ${err.message}`
+    );
     throw err;
   }
 }

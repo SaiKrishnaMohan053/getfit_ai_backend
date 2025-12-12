@@ -58,9 +58,9 @@ describe("HEALTH ROUTES", () => {
     expect(res.statusCode).toBe(200);
 
     expect(res.body).toHaveProperty("ok", true);
-    expect(res.body).toHaveProperty("memory");
-    expect(res.body).toHaveProperty("eventLoop");
-    expect(res.body.eventLoop).toHaveProperty("p50");
-    expect(res.body.eventLoop).toHaveProperty("p99");
+    expect(res.body).toHaveProperty("memoryMB");
+    expect(res.body).toHaveProperty("eventLoopSec");
+    expect(res.body.eventLoopSec).toHaveProperty("p50");
+    expect(res.body.eventLoopSec).toHaveProperty("p99");
   });
 });

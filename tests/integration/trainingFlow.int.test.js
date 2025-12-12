@@ -62,9 +62,7 @@ describe("E2E — TRAIN → QUERY → DELETE → STATS", () => {
     const res = await request(app)
       .post("/api/query")
       .send({
-        prompt: "What is this document about?",
-        domain: "training",
-        collection: "getfit_staging"
+        prompt: "What is this document about?"
       })
       .expect(res => expect([200, 400]).toContain(res.statusCode));
 
@@ -80,13 +78,15 @@ describe("E2E — TRAIN → QUERY → DELETE → STATS", () => {
   // 3) DELETE
   // ---------------------------------------------------------------
   it("should DELETE document gracefully", async () => {
-    const docId = trainedDocId || "mock-doc-id";
-
     const res = await request(app)
       .delete("/api/delete")
-      .send({ docId })
+      .send({ source_file: "dummy.pdf" })
       .expect(res => expect([200, 400, 404]).toContain(res.statusCode));
 
+      if(res.statusCode === 200) {
+        expect(res.body.ok).toBe(true);
+        expect(res.body.deleted_source).toBe("dummy.pdf");
+      }
     console.log("DELETE RESPONSE:", res.body);
   });
 
