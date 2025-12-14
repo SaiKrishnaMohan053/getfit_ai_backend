@@ -15,12 +15,12 @@ const { logger } = require("../utils/logger");
 const queryCache = require("../cache/queryCache");
 const { aiQueue } = require("../config/aiQueue");
 
-const RAG_TOP_K = Number(process.env.RAG_TOP_K || "3");
+const RAG_TOP_K = Number(process.env.RAG_TOP_K || "5");
 const RAG_STRICT_THRESHOLD = Number(
-  process.env.RAG_STRICT_THRESHOLD || "0.80"
+  process.env.RAG_STRICT_THRESHOLD || "0.70"
 );
 const RAG_WEAK_THRESHOLD = Number(
-  process.env.RAG_WEAK_THRESHOLD || "0.70"
+  process.env.RAG_WEAK_THRESHOLD || "0.55"
 );
 
 // ---------------------------------------------------------------------------
@@ -247,7 +247,7 @@ async function answerWithRag(query, domain) {
 
     enqueueSummaryJob(cached.answer).catch(()=>{});
 
-    return { ...cached, mode: "cache" };
+    return { ...cached, servedFrom: "cache" };
   }
 
   try {
@@ -266,7 +266,6 @@ async function answerWithRag(query, domain) {
     vector: queryVector,
     with_payload: true,
     limit: RAG_TOP_K,
-    score_threshold: RAG_WEAK_THRESHOLD,
   });
   
   const results = await Promise.race([
@@ -275,23 +274,43 @@ async function answerWithRag(query, domain) {
   ]);
   logger.info(`Step 3 done: Qdrant returned ${results?.length || 0} results`);
 
+  const filteredResults = results.filter(
+    r => typeof r.score === "number" && r.score >= RAG_WEAK_THRESHOLD
+  );
   if (!results || results.length === 0) {
-    logger.warn("RAG search returned no results");
+    logger.warn("Qdrant returned zero raw results (unexpected)");
+    return {
+      ok: false,
+      mode: "rag",
+      domain,
+      answer:
+        "Trainer library is currently unavailable. Please try again later.",
+      contextCount: 0,
+      sources: [],
+    };
+  }
+
+  if (filteredResults.length === 0) {
+    logger.warn(
+      `RAG results exist but all below threshold. TopScore=${results[0]?.score}`
+    );
+
     const response = {
       ok: false,
       mode: "rag",
+      domain,
       answer:
         "I don’t have verified trainer data for this question yet. Please ask a human coach.",
-      contextCount: 0,
+      contextCount: results.length,
+      topScore: results[0]?.score,
       sources: [],
-      domain,
     };
+
     await queryCache.set(cacheKey, response);
-    logger.info(`RAG processing took ${Date.now() - start}ms`);
     return response;
   }
 
-  const topScore = results[0].score ?? 0;
+  const topScore = filteredResults[0].score ?? 0;
 
   // Decide confidence band for hybrid RAG
   let confidence;
@@ -319,9 +338,9 @@ async function answerWithRag(query, domain) {
       domain,
       answer:
         "I’m not confident enough based on the trainer library to answer this. Please ask a human coach.",
-      contextCount: results.length,
+      contextCount: filteredResults.length,
       topScore,
-      sources: results.map((r) => ({
+      sources: filteredResults.map((r) => ({
         score: r.score,
         source_file: r.payload?.source_file,
         domain: r.payload?.domain,
@@ -339,7 +358,7 @@ async function answerWithRag(query, domain) {
   const MAX_CHUNK_CHARS = Number(process.env.RAG_MAX_CHUNK_CHARS || "1200");
   const MAX_CONTEXT_CHARS = Number(process.env.RAG_MAX_CONTEXT_CHARS || "4000");
 
-  let context = results
+  let context = filteredResults
     .map((r, i) => {
       const text = String(r.payload?.text || "").slice(0, MAX_CHUNK_CHARS);
       return `(${i + 1}) ${text}`;
@@ -425,9 +444,9 @@ async function answerWithRag(query, domain) {
     ragMode: confidence === "high" ? "strict" : "hybrid",
     domain,
     answer,
-    contextCount: results.length,
+    contextCount: filteredResults.length,
     topScore,
-    sources: results.map((r) => ({
+    sources: filteredResults.map((r) => ({
       score: r.score,
       source_file: r.payload?.source_file,
       domain: r.payload?.domain,

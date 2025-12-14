@@ -86,7 +86,8 @@ describe("SERVICE: getRagAnswer – Brain Router", () => {
 
     const res = await getRagAnswer("bench press program");
 
-    expect(res.mode).toBe("cache");
+    expect(res.mode).toBe("rag");
+    expect(res.servedFrom).toBe("cache");
     expect(res.answer).toBe("cached");
     expect(queryCache.get).toHaveBeenCalled();
     expect(qdrantClient.search).not.toHaveBeenCalled();
@@ -119,7 +120,7 @@ describe("SERVICE: getRagAnswer – Brain Router", () => {
 
     expect(res.ok).toBe(false);
     expect(res.mode).toBe("rag");
-    expect(res.ragMode).toBe("low-confidence");
+    expect(res.answer).toContain("verified trainer data");
   });
 
   // ------------------------------------------------------------
@@ -133,7 +134,7 @@ describe("SERVICE: getRagAnswer – Brain Router", () => {
     expect(res.mode).toBe("rag");
     expect(res.contextCount).toBe(0);
     expect(res.sources).toEqual([]);
-    expect(queryCache.set).toHaveBeenCalled();
+    expect(queryCache.set).not.toHaveBeenCalled();
   });
 });
 
