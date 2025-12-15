@@ -36,7 +36,7 @@
 
         { "name": "QDRANT_COLLECTION", "value": "ecs_test" },
 
-        { "name": "REDIS_HOST", "value": "getfit-redis-9y9aob.serverless.use1.cache.amazonaws.com" },
+        { "name": "REDIS_HOST", "value": "getfit-redis-hjxkti.serverless.use1.cache.amazonaws.com" },
         { "name": "REDIS_PORT", "value": "6379" },
 
         { "name": "STAGING_BASE_URL", "value": "http://localhost:8080" }
