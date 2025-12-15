@@ -81,11 +81,17 @@ function classifyDomain(query) {
   const q = query.toLowerCase();
 
   const trainingWords = [
-    "exercise", "exercises", "workout", "workouts",
-    "push day", "pull day", "leg day",
-    "bench press", "squat", "deadlift",
-    "sets", "reps", "training program",
-    "training", "tempo training"
+    "exercise", "exercises",
+    "workout", "workouts",
+    "training", "program",
+    "routine", "split",
+    "bench press", "bench",
+    "squat", "deadlift",
+    "tempo", "form",
+    "sets", "reps",
+    "strength", "hypertrophy",
+    "mobility", "stability",
+    "posture", "corrective",
   ];
 
   const nutritionWords = [
@@ -234,20 +240,32 @@ async function handleUnknownQuery(query) {
   };
 }
 
+function normalizeCacheKey(query) {
+  return query
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ")     
+    .trim();
+}
+
 async function answerWithRag(query, domain) {
   const start = Date.now();
   logger.info(`[QDRANT] RAG invoked for domain=${domain}, query="${query}"`);
 
   // Cache check (Redis via queryCache helper)
   logger.info("Step 1:Checking RAG cache");
-  const cacheKey = `${domain}:${query.toLowerCase().trim()}`;
+  const cacheKey = `${domain}:${normalizeCacheKey(query)}`;
   const cached = await queryCache.get(cacheKey);
   if (cached) {
     logger.info("RAG cache hit");
 
     enqueueSummaryJob(cached.answer).catch(()=>{});
 
-    return { ...cached, servedFrom: "cache" };
+    return { 
+      ...cached, 
+      servedFrom: "cache",
+      cachedAt: cached.cachedAt || "unknown",
+    };
   }
 
   try {
@@ -274,12 +292,9 @@ async function answerWithRag(query, domain) {
   ]);
   logger.info(`Step 3 done: Qdrant returned ${results?.length || 0} results`);
 
-  const filteredResults = results.filter(
-    r => typeof r.score === "number" && r.score >= RAG_WEAK_THRESHOLD
-  );
   if (!results || results.length === 0) {
-    logger.warn("Qdrant returned zero raw results (unexpected)");
-    return {
+    logger.warn("Qdrant returned zero results for query");
+    const response = {
       ok: false,
       mode: "rag",
       domain,
@@ -288,29 +303,10 @@ async function answerWithRag(query, domain) {
       contextCount: 0,
       sources: [],
     };
-  }
-
-  if (filteredResults.length === 0) {
-    logger.warn(
-      `RAG results exist but all below threshold. TopScore=${results[0]?.score}`
-    );
-
-    const response = {
-      ok: false,
-      mode: "rag",
-      domain,
-      answer:
-        "I don’t have verified trainer data for this question yet. Please ask a human coach.",
-      contextCount: results.length,
-      topScore: results[0]?.score,
-      sources: [],
-    };
-
-    await queryCache.set(cacheKey, response);
     return response;
   }
 
-  const topScore = filteredResults[0].score ?? 0;
+  const topScore = typeof results[0].score === "number" ? results[0].score : 0;
 
   // Decide confidence band for hybrid RAG
   let confidence;
@@ -337,20 +333,22 @@ async function answerWithRag(query, domain) {
       ragMode: "low-confidence",
       domain,
       answer:
-        "I’m not confident enough based on the trainer library to answer this. Please ask a human coach.",
-      contextCount: filteredResults.length,
+        "I don’t have verified trainer data for this question yet. Please ask a human coach.",
+      contextCount: results.length,
       topScore,
-      sources: filteredResults.map((r) => ({
+      sources: results.map((r) => ({
         score: r.score,
         source_file: r.payload?.source_file,
         domain: r.payload?.domain,
         chunk_index: r.payload?.chunk_index,
       })),
     };
-
-    await queryCache.set(cacheKey, response);
     return response;
   }
+
+  const filteredResults = results.filter(
+    r => typeof r.score === "number" && r.score >= RAG_WEAK_THRESHOLD
+  ).slice(0, RAG_TOP_K);
 
   // Build context string from top chunks
   logger.info("Step 4:building context from top chunks");
@@ -452,10 +450,13 @@ async function answerWithRag(query, domain) {
       domain: r.payload?.domain,
       chunk_index: r.payload?.chunk_index,
     })),
+    cachedAt: new Date().toISOString(),
   };
 
   // Cache successful RAG answer
-  await queryCache.set(cacheKey, response);
+  if (response.ok && response.mode === "rag") {
+   await queryCache.set(cacheKey, response); 
+  }
 
   enqueueSummaryJob(answer).catch(() => {});
 
@@ -533,25 +534,7 @@ async function getRagAnswer(input) {
       return handleAppQuery(query);
 
     case "domainQuestion":
-      return Promise.race([
-        answerWithRag(query, route.domain),
-        timeoutPromise(Number(process.env.RAG_HTTP_TIMEOUT_MS || "15000"))
-      ]).then(res => {
-        if(res.ragMode === "low-confidence") return res;
-        if (res.contextCount === 0) return res;
-        return res;
-      })
-      .catch(err => {
-        if (err.message.startsWith("TIMEOUT_")) {
-          logger.warn("RAG timed out at the HTTP layer");
-          return {
-            ok: false,
-            mode: "timeout",
-            answer: "This question is taking too long. Try rephrasing or simplifying.",
-          };
-        }
-        throw err;
-      });
+      return answerWithRag(query, route.domain);
 
     case "unknown":
     default:
