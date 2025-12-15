@@ -255,7 +255,12 @@ async function answerWithRag(query, domain) {
   // Cache check (Redis via queryCache helper)
   logger.info("Step 1:Checking RAG cache");
   const cacheKey = `${domain}:${normalizeCacheKey(query)}`;
-  const cached = await queryCache.get(cacheKey);
+  let cached = null;
+  try {
+    cached = await queryCache.get(cacheKey);
+  } catch (err) {
+    logger.error("queryCache.get error: " + err.message);
+  }
   if (cached) {
     logger.info("RAG cache hit");
 

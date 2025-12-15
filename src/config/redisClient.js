@@ -11,7 +11,14 @@ const {
 } = require("./prometheusMetrics");
 
 // Main Redis client
-const redisClient = new Redis(config.REDIS_URL);
+const redisClient = new Redis({
+  host: config.REDIS_HOST,
+  port: 6379,
+  tls: {},
+  connectTimeout: 2000,
+  maxRetriesPerRequest: 1,
+  enableOfflineQueue: false,
+});
 
 // Connection lifecycle logging
 redisClient.on("connect", () => logger.info("Redis connected"));
@@ -70,10 +77,12 @@ async function redisGetJSON(key) {
 
     if (value) {
       redisHits.inc();
+      logger.info(`Redis GET hit for key: ${key}`);
       return JSON.parse(value);
     }
 
     redisMisses.inc();
+    logger.info(`Redis GET miss for key: ${key}`);
     return null;
   } catch (err) {
     redisMisses.inc();
