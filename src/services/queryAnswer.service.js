@@ -348,6 +348,7 @@ async function answerWithRag(query, domain) {
         chunk_index: r.payload?.chunk_index,
       })),
     };
+    await queryCache.set(cacheKey, response);
     return response;
   }
 
