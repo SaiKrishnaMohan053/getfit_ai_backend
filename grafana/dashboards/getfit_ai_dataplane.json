@@ -1,0 +1,72 @@
+{
+  "uid": "ai-dataplane",
+  "title": "AI / Data Plane",
+  "tags": ["rag", "qdrant", "redis", "openai"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Qdrant Status",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "qdrant_up", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Qdrant Latency p95 (ms)",
+      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(qdrant_latency_seconds_bucket[5m])) * 1000",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis Latency p95 (ms)",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(redis_latency_seconds_bucket[5m])) * 1000",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis Hit Ratio (%)",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "redis_cache_hits_total / (redis_cache_hits_total + redis_cache_misses_total) * 100",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "OpenAI Latency p95 (ms)",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(openai_response_time_ms_bucket[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "BullMQ Jobs",
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 6 },
+      "targets": [
+        { "expr": "bullmq_jobs_active", "refId": "A" },
+        { "expr": "bullmq_jobs_failed", "refId": "B" }
+      ]
+    }
+  ]
+}
