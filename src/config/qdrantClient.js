@@ -3,6 +3,9 @@
 
 const { QdrantClient } = require("@qdrant/js-client-rest");
 const { config } = require("./env");
+const {
+  qdrantUp,
+} = require("./prometheusMetrics");
 
 const qdrantClient = new QdrantClient({
   url: config.QDRANT_URL,
@@ -17,9 +20,11 @@ if (config.NODE_ENV !== "test") {
   qdrantClient
     .getCollections()
     .then(() => {
+      qdrantUp.set(1);
       console.log(`Qdrant client initialized (${config.QDRANT_URL})`);
     })
     .catch((err) => {
+      qdrantUp.set(0);
       console.error("Qdrant initialization failed:", err.message);
       process.exit(1);
     });

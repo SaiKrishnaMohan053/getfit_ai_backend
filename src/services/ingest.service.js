@@ -11,6 +11,11 @@ const { embedText } = require("../utils/embedding");
 const { qdrantClient } = require("../config/qdrantClient");
 const { config } = require("../config/env");
 const { logger } = require("../utils/logger");
+const {
+  qdrantUp,
+  qdrantRequests,
+  qdrantLatency,
+} = require("../config/prometheusMetrics");
 
 // ---------------------------------------------------------------------
 // Tunables
@@ -154,10 +159,32 @@ async function trainDocument({ pdfBuffer, domain, source_file, version_tag }) {
 
     // Upsert with retry
     const upsertLabel = `Upsert ${label}`;
-    await withRetry(
-      () => qdrantClient.upsert(config.QDRANT_COLLECTION, { points, wait: true }),
-      upsertLabel
-    );
+
+    await withRetry(async () => {
+      const startHr = process.hrtime();
+
+      try {
+        const res = await qdrantClient.upsert(
+          config.QDRANT_COLLECTION,
+          { points, wait: true }
+        );
+
+        qdrantRequests.inc({ operation: "upsert", status: "success" });
+        qdrantLatency.observe(
+          process.hrtime(startHr)[0] +
+          process.hrtime(startHr)[1] / 1e9
+        );
+
+        return res;
+      } catch (err) {
+        qdrantRequests.inc({ operation: "upsert", status: "error" });
+        qdrantLatency.observe(
+          process.hrtime(startHr)[0] +
+          process.hrtime(startHr)[1] / 1e9
+        );
+        throw err;
+      }
+    }, upsertLabel);
 
     inserted += points.length;
 

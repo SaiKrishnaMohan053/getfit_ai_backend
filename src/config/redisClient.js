@@ -8,6 +8,7 @@ const {
   redisHits,
   redisMisses,
   redisLatency,
+  redisErrors,
 } = require("./prometheusMetrics");
 
 // Main Redis client
@@ -58,7 +59,7 @@ async function getOrSetCache(key, fetchFunction) {
     await redisClient.set(key, JSON.stringify(data));
     return data;
   } catch (err) {
-    redisMisses.inc();
+    redisErrors.inc();
     logger.error(`Redis getOrSetCache error (${key}): ${err.message}`);
     return fetchFunction(); // fallback
   }
@@ -85,7 +86,7 @@ async function redisGetJSON(key) {
     logger.info(`Redis GET miss for key: ${key}`);
     return null;
   } catch (err) {
-    redisMisses.inc();
+    redisErrors.inc();
     logger.error(`Redis GET error (${key}): ${err.message}`);
     return null;
   }
@@ -103,6 +104,7 @@ async function redisSetJSON(key, value, ttlSeconds = 3600) {
     const latency = getElapsedSeconds(start);
     redisLatency.observe(latency);
   } catch (err) {
+    redisErrors.inc();
     logger.error(`Redis SET error (${key}): ${err.message}`);
   }
 }

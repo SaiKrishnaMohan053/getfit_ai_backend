@@ -21,6 +21,12 @@ const healthMemoryRouter = require("./routes/healthMemory.routes");
 const queueStatusRouter = require("./routes/queueStatus.routes");
 const debugRouter = require("./routes/debug.routes");
 
+function normalizeRoute(req) {
+  if (req.route?.path) return req.route.path;
+  if (req.baseUrl) return req.baseUrl;
+  return "unknown";
+}
+
 const errorHandler = require("./middleware/errorHandler");
 
 dotenv.config();
@@ -43,15 +49,16 @@ app.get("/", (req, res) => {
  * Captures method, route, and status code for each request.
  */
 app.use((req, res, next) => {
-  const originalEnd = res.end;
-  res.end = function (...args) {
+  res.on("finish", () => {
+    const route = normalizeRoute(req);
+
     httpRequests.inc({
       method: req.method,
-      route: req.route ? req.route.path : req.path,
+      route,
       status: res.statusCode,
     });
-    originalEnd.apply(this, args);
-  };
+  });
+
   next();
 });
 

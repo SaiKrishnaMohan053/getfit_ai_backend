@@ -65,6 +65,11 @@ if (!global.__PROM_SINGLETON__) {
     help: "Cache misses in Redis",
   });
 
+  const redisErrors = new client.Counter({
+    name: "redis_errors_total",
+    help: "Total Redis operation errors",
+  });
+
   // BullMQ metrics
   const bullActive = new client.Gauge({
     name: "bullmq_jobs_active",
@@ -79,6 +84,23 @@ if (!global.__PROM_SINGLETON__) {
   const bullFailed = new client.Counter({
     name: "bullmq_jobs_failed",
     help: "Failed BullMQ jobs",
+  });
+
+  const qdrantUp = new client.Gauge({
+    name: "qdrant_up",
+    help: "Qdrant availability (1 = up, 0 = down)",
+  });
+
+  const qdrantRequests = new client.Counter({
+    name: "qdrant_requests_total",
+    help: "Total Qdrant requests",
+    labelNames: ["operation", "status"],
+  });
+
+  const qdrantLatency = new client.Histogram({
+    name: "qdrant_latency_seconds",
+    help: "Qdrant request latency",
+    buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2],
   });
 
   // HTTP request counter
@@ -103,9 +125,13 @@ if (!global.__PROM_SINGLETON__) {
     redisLatency,
     redisHits,
     redisMisses,
+    redisErrors,
     bullActive,
     bullCompleted,
     bullFailed,
+    qdrantUp,
+    qdrantRequests,
+    qdrantLatency,
     httpRequests,
     backendUptime,
     memoryRss,
@@ -119,9 +145,13 @@ if (!global.__PROM_SINGLETON__) {
     redisLatency,
     redisHits,
     redisMisses,
+    redisErrors,
     bullActive,
     bullCompleted,
     bullFailed,
+    qdrantUp,
+    qdrantRequests,
+    qdrantLatency,
     httpRequests,
     backendUptime,
     memoryRss,

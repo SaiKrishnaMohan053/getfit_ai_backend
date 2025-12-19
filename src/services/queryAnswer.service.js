@@ -14,6 +14,10 @@ const { safeChatCompletion } = require("../utils/openaiSafeWrap");
 const { logger } = require("../utils/logger");
 const queryCache = require("../cache/queryCache");
 const { aiQueue } = require("../config/aiQueue");
+const {
+  qdrantRequests,
+  qdrantLatency,
+} = require("../config/prometheusMetrics");
 
 const RAG_TOP_K = Number(process.env.RAG_TOP_K || "5");
 const RAG_STRICT_THRESHOLD = Number(
@@ -285,11 +289,35 @@ async function answerWithRag(query, domain) {
 
   // Search Qdrant with payload
   logger.info("Step 3:searching Qdrant vector DB");
-  const searchPromise = qdrantClient.search(config.QDRANT_COLLECTION, {
-    vector: queryVector,
-    with_payload: true,
-    limit: RAG_TOP_K,
-  });
+  const qdrantStart = process.hrtime();
+
+  const searchPromise = (async () => {
+    try {
+      const res = await qdrantClient.search(
+        config.QDRANT_COLLECTION,
+        {
+          vector: queryVector,
+          with_payload: true,
+          limit: RAG_TOP_K,
+        }
+      );
+
+      qdrantRequests.inc({ operation: "search", status: "success" });
+      qdrantLatency.observe(
+        process.hrtime(qdrantStart)[0] +
+        process.hrtime(qdrantStart)[1] / 1e9
+      );
+
+      return res;
+    } catch (err) {
+      qdrantRequests.inc({ operation: "search", status: "error" });
+      qdrantLatency.observe(
+        process.hrtime(qdrantStart)[0] +
+        process.hrtime(qdrantStart)[1] / 1e9
+      );
+      throw err;
+    }
+  })();
   
   const results = await Promise.race([
     searchPromise,
