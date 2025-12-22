@@ -28,8 +28,8 @@ const { safeChatCompletion } = require("../../src/utils/openaiSafeWrap");
 
 const {
   getRagAnswer,
-  enqueueSummaryJob,
 } = require("../../src/services/queryAnswer.service");
+const { enqueueSummaryJob } = require("../../src/query-answer/background/summaryJob");
 
 describe("SERVICE: getRagAnswer – Brain Router", () => {
   beforeEach(() => {
@@ -69,8 +69,8 @@ describe("SERVICE: getRagAnswer – Brain Router", () => {
   it("handles unknown domain queries (no RAG)", async () => {
     const res = await getRagAnswer("Tell me about Elon Musk");
 
-    expect(res.mode).toBe("unknown");
-    expect(res.ok).toBe(true);
+    expect(res.mode).toBe("unsupported");
+    expect(res.ok).toBe(false);
     expect(qdrantClient.search).not.toHaveBeenCalled();
   });
 

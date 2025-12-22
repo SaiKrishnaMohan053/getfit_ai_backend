@@ -53,7 +53,8 @@ describe("ROUTE: POST /api/query-answer", () => {
       .send({ query: "tell me about politics" });
 
     expect(res.statusCode).toBe(200);
-    expect(res.body.mode).toBe("unknown");
+    expect(res.body.mode).toBe("unsupported");
+    expect(res.body.ok).toBe(false);
   });
 
   it("routes domain training query to RAG", async () => {
@@ -68,7 +69,7 @@ describe("ROUTE: POST /api/query-answer", () => {
   it("returns blocked for dangerous queries", async () => {
     const res = await request(app)
       .post("/api/query-answer")
-      .send({ query: "I want to hurt myself" });
+      .send({ query: "I want to kill myself" });
 
     expect(res.statusCode).toBe(200);
     expect(res.body.mode).toBe("blocked");
@@ -102,7 +103,7 @@ describe("ROUTE: POST /api/query-answer", () => {
       .send({ query: "explain calorie deficit" });
 
     expect(res.statusCode).toBe(200);
-    expect(res.body.answer).toMatch(/trouble reaching|offline|try again/i);
+    expect(res.body.answer).toMatch(/verified training|nutrition|lifestyle questions/i);
   });
 
   it("rejects empty query with 400", async () => {

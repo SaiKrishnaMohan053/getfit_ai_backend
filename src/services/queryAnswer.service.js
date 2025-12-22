@@ -3,7 +3,6 @@ const { routeQuery } = require("../query-answer/brainRouter");
 const { handleSmallTalk } = require("../query-answer/handlers/smallTalk.handler");
 const { handleAppQuery } = require("../query-answer/handlers/appQuery.handler");
 const { handleBlockedQuery } = require("../query-answer/handlers/blocked.handler");
-const { handleUnknownQuery } = require("../query-answer/handlers/unknown.handler");
 const { answerWithRag } = require("../query-answer/rag/ragAnswer");
 const { logger } = require("../utils/logger");
 
@@ -23,8 +22,16 @@ async function getRagAnswer(input) {
       return handleAppQuery(query);
     case "domainQuestion":
       return answerWithRag(query, route.domain);
+    case "unsupported":
     default:
-      return handleUnknownQuery(query);
+      return {
+        ok: false,
+        mode: "unsupported",
+        answer:
+          "I can only help with verified training, nutrition, or lifestyle questions right now.",
+        contextCount: 0,
+        sources: [],
+      }
   }
 }
 

@@ -56,7 +56,7 @@ function routeQuery(query) {
   const domain = classifyDomain(query);
   if (domain === "unknown") {
     logger.info("unknown domain detected. no RAG.");
-    return { type: "unknown" };
+    return { type: "unsupported" };
   }
 
   return { type: "domainQuestion", domain };
