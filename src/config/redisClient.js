@@ -2,8 +2,8 @@
 // Redis client + cache helpers with Prometheus metrics
 
 const Redis = require("ioredis");
-const { config } = require("./env");
 const { logger } = require("../utils/logger");
+const { config } = require("./env");
 const {
   redisHits,
   redisMisses,
