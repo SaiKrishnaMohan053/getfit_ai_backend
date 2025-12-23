@@ -201,12 +201,14 @@ async function answerWithRag(query, domain) {
             "I don’t know based on the trainer library."
         - If RAG_Mode is HYBRID:
           - Use the Context as the primary source.
-          - You may synthesize and apply assessment principles found in the Context.
+          - If the Context contains assessment observations, compensations,
+            movement descriptions, or muscle behavior relevant to the question,
+            you MUST provide a synthesized answer based on them.
           - You may translate assessment observations into practical coaching language.
           - Never contradict the Context.
-          - Only reply with:
+          - ONLY reply with:
             "I don’t know based on the trainer library."
-            if the Context is clearly unrelated or insufficient.
+            if the Context is completely unrelated to the question.
 
         ANSWER STYLE (MANDATORY):
         - Sound like a calm, experienced gym trainer.
