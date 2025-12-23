@@ -1,14 +1,22 @@
 const { logger } = require("../utils/logger");
 
 function isSmallTalk(query) {
-  const q = query.toLowerCase();
-  if (q.length > 80) return false;
+  const q = query.toLowerCase().trim();
 
-  return [
-    "hi", "hello", "hey", "how are you",
-    "what's up", "good morning", "good night",
-    "who are you",
-  ].some(k => q.includes(k));
+  if (q.length > 40) return false;
+
+  const smallTalkPatterns = [
+    /^hi$/,
+    /^hello$/,
+    /^hey$/,
+    /^how are you$/,
+    /^what's up$/,
+    /^good morning$/,
+    /^good night$/,
+    /^who are you$/
+  ];
+
+  return smallTalkPatterns.some(p => p.test(q));
 }
 
 function isAppQuery(query) {
@@ -54,6 +62,7 @@ function isDangerousOrMedical(query) {
 }
 
 function routeQuery(query) {
+  logger.info(`[ROUTER] smallTalk=${isSmallTalk(query)}, app=${isAppQuery(query)}, domain=${classifyDomain(query)}, query="${query}"`);
   if (isDangerousOrMedical(query)) return { type: "blocked" };
   if (isAppQuery(query)) return { type: "app" };
   if (isSmallTalk(query)) return { type: "smallTalk" };
