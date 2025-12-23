@@ -3,7 +3,7 @@
 const { redisGetJSON, redisSetJSON } = require("../config/redisClient");
 const { logger } = require("../utils/logger");
 
-const CACHE_TTL = 60 * 60;
+const CACHE_TTL = 60 * 6;
 const CACHE_TIMEOUT_MS = 3000;
 
 function withTimeout(promise, ms) {
