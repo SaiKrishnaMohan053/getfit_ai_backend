@@ -98,8 +98,10 @@ describe("SERVICE: trainDocument (ingestion pipeline)", () => {
     expect(parsePdf).toHaveBeenCalledWith(pdfBuffer);
     expect(chunkText).toHaveBeenCalledWith(
       "This is a simple PDF text",
-      1000,
-      150
+      {
+        maxChars: 4000,
+        overlapSentences: 2,
+      }
     );
     expect(embedText).toHaveBeenCalledWith(["chunk one", "chunk two"]);
     expect(qdrantClient.upsert).toHaveBeenCalledTimes(1);

@@ -1,5 +1,4 @@
 // src/services/ingest.service.js
-// PDF ingestion pipeline: parse → chunk → embed → upsert → log
 
 const fs = require("fs");
 const path = require("path");
@@ -8,25 +7,21 @@ const { v4: uuidv4 } = require("uuid");
 const { parsePdf } = require("../utils/pdfReader");
 const { chunkText } = require("../utils/chunker");
 const { embedText } = require("../utils/embedding");
+const { buildDocId } = require("../utils/docId");
 const { qdrantClient } = require("../config/qdrantClient");
 const { config } = require("../config/env");
 const { logger } = require("../utils/logger");
 const {
-  qdrantUp,
   qdrantRequests,
   qdrantLatency,
 } = require("../config/prometheusMetrics");
 
-// ---------------------------------------------------------------------
-// Tunables
-// ---------------------------------------------------------------------
+// ---------------- CONFIG ----------------
 const BATCH_SIZE = 50;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 600;
 
-// ---------------------------------------------------------------------
-// Log file helpers
-// ---------------------------------------------------------------------
+// ---------------- LOG SETUP ----------------
 const LOG_DIR = path.join(process.cwd(), "logs");
 if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -43,163 +38,117 @@ function writeLog(line) {
       getLogFile(),
       `[${new Date().toISOString()}] ${line}\n`
     );
-  } catch (err) {
-    // Do not break ingestion on log-write errors
-    logger.warn(`Failed to write ingest log: ${err.message}`);
-  }
+  } catch (_) {}
 }
 
-// Sleep util for retry backoff
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * Execute a function with retries using exponential backoff.
- */
-async function withRetry(fn, label, maxRetries = MAX_RETRIES) {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+async function withRetry(fn, label) {
+  for (let i = 1; i <= MAX_RETRIES; i++) {
     try {
       return await fn();
     } catch (err) {
-      const isLast = attempt === maxRetries;
-      const wait = RETRY_BASE_MS * Math.pow(2, attempt - 1);
-
-      const msg = `${label} failed (attempt ${attempt}/${maxRetries}): ${err.message}`;
-      logger.warn(msg);
-      writeLog(msg);
-
-      if (isLast) throw err;
+      if (i === MAX_RETRIES) throw err;
+      const wait = RETRY_BASE_MS * Math.pow(2, i - 1);
+      logger.warn(`${label} failed (retry ${i})`);
+      writeLog(`${label} failed (retry ${i})`);
       await sleep(wait);
     }
   }
 }
 
-// ---------------------------------------------------------------------
-// Main ingestion pipeline
-// ---------------------------------------------------------------------
-/**
- * Ingest a PDF into Qdrant with full batching + retry strategy.
- *
- * @param {Buffer|string} pdfBuffer
- * @param {string} domain
- * @param {string} source_file
- * @param {string} [version_tag]
- */
+// ---------------- MAIN INGEST ----------------
 async function trainDocument({ pdfBuffer, domain, source_file, version_tag }) {
   const start = Date.now();
+
   const vtag =
     version_tag ||
     new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
 
-  logger.info(`Starting ingestion for ${source_file}`);
-  writeLog(`Starting ingestion (domain=${domain}, version=${vtag})`);
+  logger.info(`Training started: ${source_file}`);
+  writeLog(`Training started: ${source_file}`);
 
-  // -------------------------------------------------------------
-  // 1. PDF → text → chunks
-  // -------------------------------------------------------------
+  // Parse PDF
   const text = await parsePdf(pdfBuffer);
-  if (!text || !text.trim()) {
-    const message = "Parsed PDF returned empty text";
-    logger.error(message);
-    writeLog(message);
-    throw new Error(message);
+  if (!text) {
+    logger.error("Parsed PDF returned empty text");
+    throw new Error("Parsed PDF returned empty text");
   }
 
-  const chunks = chunkText(text, 1000, 150);
+  // Generate document identity
+  const doc_id = buildDocId(pdfBuffer);
+  const book_title = source_file.replace(/\.pdf$/i, "");
+  const category = domain;
+
+  // Chunk (SMART)
+  const chunks = chunkText(text, {
+    maxChars: 4000,
+    overlapSentences: 2,
+  });
+
   const totalChunks = chunks.length;
-
-  if (totalChunks === 0) {
-    const message = "No chunks generated from PDF";
-    logger.error(message);
-    writeLog(message);
-    throw new Error(message);
+  if (!totalChunks) {
+    logger.error("No chunks generated from PDF");
+    throw new Error("No chunks generated from PDF");
   }
 
-  logger.info(`Generated ${totalChunks} chunks (batch size ${BATCH_SIZE})`);
   writeLog(`Generated ${totalChunks} chunks`);
 
-  // -------------------------------------------------------------
-  // 2. Embed and upsert in batches
-  // -------------------------------------------------------------
+  // Batch embed + upsert
   let embedded = 0;
   let inserted = 0;
-  const batchCount = Math.ceil(totalChunks / BATCH_SIZE);
 
-  for (let b = 0; b < batchCount; b++) {
-    const startIdx = b * BATCH_SIZE;
-    const endIdx = Math.min(startIdx + BATCH_SIZE, totalChunks);
-    const batchChunks = chunks.slice(startIdx, endIdx);
+  for (let i = 0; i < totalChunks; i += BATCH_SIZE) {
+    const batch = chunks.slice(i, i + BATCH_SIZE);
 
-    const label = `Batch ${b + 1}/${batchCount} (chunks ${startIdx + 1}-${endIdx})`;
-    logger.info(`Embedding ${label}`);
-    writeLog(`Embedding ${label}`);
-
-    // Embed with retry
     const vectors = await withRetry(
-      () => embedText(batchChunks),
-      `Embedding ${label}`
+      () => embedText(batch),
+      "Embedding batch"
     );
 
     embedded += vectors.length;
 
-    const buildPayload = (text, index) => ({
-      text,
-      domain,
-      source_file,
-      version_tag: vtag,
-      chunk_index: index,
-      total_chunks: totalChunks,
-      created_at: new Date().toISOString(),
-    });
-    // Build Qdrant points
-    const points = batchChunks.map((c, i) => ({
+    const points = batch.map((chunk, idx) => ({
       id: uuidv4(),
-      vector: vectors[i],
-      payload: buildPayload(c, startIdx + i),
+      vector: vectors[idx],
+      payload: {
+        text: chunk,
+        doc_id,
+        book_title,
+        domain,
+        category,
+        source_file,
+        version_tag: vtag,
+        chunk_index: i + idx,
+        total_chunks: totalChunks,
+        created_at: new Date().toISOString(),
+      },
     }));
-
-    // Upsert with retry
-    const upsertLabel = `Upsert ${label}`;
 
     await withRetry(async () => {
       const startHr = process.hrtime();
-
       try {
-        const res = await qdrantClient.upsert(
-          config.QDRANT_COLLECTION,
-          { points, wait: true }
-        );
+        await qdrantClient.upsert(config.QDRANT_COLLECTION, {
+          points,
+          wait: true,
+        });
 
         qdrantRequests.inc({ operation: "upsert", status: "success" });
         qdrantLatency.observe(
           process.hrtime(startHr)[0] +
-          process.hrtime(startHr)[1] / 1e9
+            process.hrtime(startHr)[1] / 1e9
         );
-
-        return res;
       } catch (err) {
         qdrantRequests.inc({ operation: "upsert", status: "error" });
-        qdrantLatency.observe(
-          process.hrtime(startHr)[0] +
-          process.hrtime(startHr)[1] / 1e9
-        );
         throw err;
       }
-    }, upsertLabel);
+    }, "Upsert batch");
 
     inserted += points.length;
-
-    logger.info(`Completed ${label}`);
-    writeLog(`Completed ${label}`);
   }
 
-  // -------------------------------------------------------------
-  // 3. Summary
-  // -------------------------------------------------------------
-  const seconds = Number(((Date.now() - start) / 1000).toFixed(2));
-
-  const summary = `Ingested ${inserted}/${totalChunks} chunks for ${source_file} in ${seconds}s`;
-  logger.info(summary);
-  writeLog(summary);
+  const seconds = ((Date.now() - start) / 1000).toFixed(2);
+  writeLog(`Completed ${inserted} chunks in ${seconds}s`);
 
   return {
     ok: true,
@@ -209,7 +158,6 @@ async function trainDocument({ pdfBuffer, domain, source_file, version_tag }) {
     chunks: totalChunks,
     embedded,
     inserted,
-    batches: batchCount,
     seconds,
     collection: config.QDRANT_COLLECTION,
   };

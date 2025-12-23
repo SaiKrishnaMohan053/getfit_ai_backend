@@ -10,7 +10,7 @@ dotenv.config({ override: false });
  */
 const config = {
   // Redis
-  REDIS_URL: process.env.REDIS_URL || "getfit-redis-hjxkti.serverless.use1.cache.amazonaws.com:6379",
+  REDIS_URL: process.env.REDIS_URL ||  "getfit-redis-hjxkti.serverless.use1.cache.amazonaws.com:6379",
   REDIS_HOST: process.env.REDIS_HOST || "getfit-redis-hjxkti.serverless.use1.cache.amazonaws.com",
   REDIS_PORT: Number(process.env.REDIS_PORT || 6379),
 
@@ -20,7 +20,7 @@ const config = {
 
   // Qdrant
   QDRANT_URL: process.env.QDRANT_URL,
-  QDRANT_COLLECTION: process.env.QDRANT_COLLECTION || "getfit_staging",
+  QDRANT_COLLECTION: process.env.QDRANT_COLLECTION || "ecs_test",
 
   // OpenAI
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
