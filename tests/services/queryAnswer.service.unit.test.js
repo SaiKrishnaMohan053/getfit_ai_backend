@@ -120,7 +120,7 @@ describe("SERVICE: getRagAnswer – Brain Router", () => {
 
     expect(res.ok).toBe(false);
     expect(res.mode).toBe("rag");
-    expect(res.answer).toContain("verified trainer data");
+    expect(res.answer).toContain("trainer library doesn’t cover this scenario");
   });
 
   // ------------------------------------------------------------
