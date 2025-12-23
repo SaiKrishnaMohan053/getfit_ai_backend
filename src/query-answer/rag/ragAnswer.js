@@ -1,6 +1,3 @@
-// EXACT SAME answerWithRag FUNCTION
-// (I’m keeping it unchanged but relocated)
-
 const { embedText } = require("../../utils/embedding");
 const { qdrantClient } = require("../../config/qdrantClient");
 const { config } = require("../../config/env");

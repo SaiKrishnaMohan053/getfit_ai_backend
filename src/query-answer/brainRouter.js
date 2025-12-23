@@ -25,16 +25,21 @@ function classifyDomain(query) {
 
   if ([
     "exercise","workout","training","routine","bench",
-    "squat","deadlift","sets","reps","strength"
+    "squat","deadlift","sets","reps","strength",
+    "pull","pull-up","pullup","pullups",
+    "push","pushup","push-up",
+    "shoulder","knee","hip","back",
+    "pain","pinching","form","technique","safe",
+    "gym","bodyweight"
   ].some(w => q.includes(w))) return "training";
 
   if ([
     "protein","carbs","diet","nutrition","macros",
-    "bulking","cutting"
+    "bulking","cutting","calories","food"
   ].some(w => q.includes(w))) return "nutrition";
 
   if ([
-    "sleep","stress","recovery","walking","lifestyle"
+    "sleep","stress","recovery","walking","steps","routine","habits","lifestyle"
   ].some(w => q.includes(w))) return "lifestyle";
 
   return "unknown";
@@ -59,6 +64,7 @@ function routeQuery(query) {
     return { type: "unsupported" };
   }
 
+  logger.info(`[ROUTER] domain=${domain}, query="${query}"`);
   return { type: "domainQuestion", domain };
 }
 
