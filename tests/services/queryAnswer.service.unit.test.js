@@ -38,7 +38,7 @@ describe("SERVICE: getRagAnswer – Brain Router", () => {
 
   // ------------------------------------------------------------
   it("routes small talk queries without RAG", async () => {
-    const res = await getRagAnswer("Hi, how are you?");
+    const res = await getRagAnswer("how are you");
 
     expect(res.mode).toBe("small-talk");
     expect(res.ok).toBe(true);

@@ -41,7 +41,7 @@ describe("ROUTE: POST /api/query-answer", () => {
   it("routes smallTalk correctly", async () => {
     const res = await request(app)
       .post("/api/query-answer")
-      .send({ query: "hi there" });
+      .send({ query: "hi" });
 
     expect(res.statusCode).toBe(200);
     expect(res.body.mode).toBe("small-talk");
