@@ -14,7 +14,11 @@ const { logger } = require("../../utils/logger");
 const RAG_TOP_K = Number(process.env.RAG_TOP_K || "5");
 const RAG_STRICT_THRESHOLD = Number(process.env.RAG_STRICT_THRESHOLD || "0.7");
 const RAG_WEAK_THRESHOLD = Number(process.env.RAG_WEAK_THRESHOLD || "0.55");
-
+const WEAK_THRESHOLD_BY_DOMAIN = {
+  trainig: 0.45,
+  nutrition: RAG_WEAK_THRESHOLD,
+  lifestyle: RAG_WEAK_THRESHOLD,
+}
 function timeoutPromise(ms) {
   return new Promise((_, reject) =>
     setTimeout(() => reject(new Error(`TIMEOUT_${ms}`)), ms)
@@ -109,12 +113,13 @@ async function answerWithRag(query, domain) {
   }
 
   const topScore = typeof results[0].score === "number" ? results[0].score : 0;
+  const weakThreshold = WEAK_THRESHOLD_BY_DOMAIN[domain] ?? RAG_WEAK_THRESHOLD;
 
   // Decide confidence band for hybrid RAG
   let confidence;
   if (topScore >= RAG_STRICT_THRESHOLD) {
     confidence = "high"; 
-  } else if (topScore >= RAG_WEAK_THRESHOLD) {
+  } else if (topScore >= weakThreshold) {
     confidence = "medium"; 
   } else {
     confidence = "low";
@@ -126,7 +131,7 @@ async function answerWithRag(query, domain) {
     logger.warn(
       `RAG top score below weak threshold (${topScore.toFixed(
         3
-      )} < ${RAG_WEAK_THRESHOLD})`
+      )} < ${weakThreshold})`
     );
 
     const response = {
@@ -150,7 +155,7 @@ async function answerWithRag(query, domain) {
   }
 
   const filteredResults = results.filter(
-    r => typeof r.score === "number" && r.score >= RAG_WEAK_THRESHOLD
+    r => typeof r.score === "number" && r.score >= weakThreshold
   ).slice(0, RAG_TOP_K);
 
   // Build context string from top chunks
