@@ -1,54 +1,66 @@
 // src/utils/pdfReader.js
 
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { execSync } = require("child_process");
 const pdfParse = require("pdf-parse");
 const Tesseract = require("tesseract.js");
 const { logger } = require("./logger");
 
-/**
- * Extracts text from PDF.
- * - Uses pdf-parse for normal PDFs
- * - Falls back to OCR (Tesseract) for scanned PDFs
- */
 async function parsePdf(pdfData) {
   let buffer;
 
-  if (typeof pdfData === "string") {
-    buffer = Buffer.from(pdfData, "base64");
-  } else if (Buffer.isBuffer(pdfData)) {
+  if (Buffer.isBuffer(pdfData)) {
     buffer = pdfData;
+  } else if (typeof pdfData === "string") {
+    buffer = Buffer.from(pdfData, "base64");
   } else {
-    throw new Error("Invalid PDF input type");
+    throw new Error("Invalid PDF input");
   }
 
-  // Try normal PDF text extraction
+  // Try normal PDF extraction
   try {
     const parsed = await pdfParse(buffer);
     const clean = parsed.text?.replace(/\s+/g, " ").trim();
+    if (clean && clean.length > 50) return clean;
+    logger.warn("PDF scanned or empty, switching to OCR");
+  } catch (_) {}
 
-    if (clean && clean.length > 50) {
-      return clean;
+  // OCR fallback
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdf-ocr-"));
+  const pdfPath = path.join(tmpDir, "input.pdf");
+  fs.writeFileSync(pdfPath, buffer);
+
+  try {
+    // Convert PDF → images
+    execSync(`pdftoppm -png "${pdfPath}" "${tmpDir}/page"`);
+
+    let fullText = "";
+
+    const files = fs
+      .readdirSync(tmpDir)
+      .filter(f => f.startsWith("page") && f.endsWith(".png"));
+
+    for (const file of files) {
+      const imagePath = path.join(tmpDir, file);
+      const result = await Tesseract.recognize(imagePath, "eng", {
+        logger: () => {},
+      });
+      fullText += result.data.text + " ";
     }
 
-    logger.warn("PDF appears scanned or empty, falling back to OCR");
-  } catch (err) {
-    logger.warn(`pdf-parse failed, using OCR: ${err.message}`);
-  }
-
-  // OCR fallback (scanned PDFs)
-  try {
-    const result = await Tesseract.recognize(buffer, "eng", {
-      logger: () => {},
-    });
-
-    const text = result?.data?.text?.replace(/\s+/g, " ").trim();
-    if (!text || text.length < 50) {
+    const clean = fullText.replace(/\s+/g, " ").trim();
+    if (!clean || clean.length < 50) {
       throw new Error("OCR produced empty text");
     }
 
-    return text;
+    return clean;
   } catch (err) {
     logger.error(`OCR failed: ${err.message}`);
     throw new Error("Parsed PDF returned empty text");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
