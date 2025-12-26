@@ -1,6 +1,7 @@
+
 services:
   # ------------------------------------------------------
-  # Backend API (your Node app)
+  # Backend API
   # ------------------------------------------------------
   backend:
     build:
@@ -13,23 +14,28 @@ services:
       NODE_ENV: development
       PORT: 8080
 
-      # Dummy local environment (safe)
-      OPENAI_API_KEY: "dummy"
-      QDRANT_API_KEY: "dummy"
-      QDRANT_URL: "http://localhost"   # Not used locally
-      MONGO_URI: "mongodb://host.docker.internal:27017/getfit_local"
-      REDIS_URL: "redis://redis:6379"
-      JWT_SECRET: "local-dev-secret"
+      # Local-only safe keys
+      OPENAI_API_KEY: dummy
+      JWT_SECRET: local-dev-secret
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # Qdrant
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: ecs-test
 
       ENABLE_METRICS: "true"
       ENABLE_BACKGROUND_JOBS: "true"
 
     depends_on:
       - redis
+      - qdrant
     restart: unless-stopped
 
   # ------------------------------------------------------
-  # Redis (local dev cache)
+  # Redis
   # ------------------------------------------------------
   redis:
     image: redis:7-alpine
@@ -50,36 +56,17 @@ services:
       - redis
 
   # ------------------------------------------------------
-  # Node Exporter (host metrics)
+  # Qdrant (Vector DB)
   # ------------------------------------------------------
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: node-exporter
-    pid: "host"
-    network_mode: "host"
-    restart: unless-stopped
-    command:
-      - "--path.rootfs=/host"
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
     volumes:
-      - "/:/host:ro,rslave"
-
-  # ------------------------------------------------------
-  # Pushgateway
-  # ------------------------------------------------------
-  pushgateway:
-    image: prom/pushgateway
-    container_name: pushgateway
-    ports:
-      - "9091:9091"
-
-  # ------------------------------------------------------
-  # CloudWatch Agent (local scraping simulation)
-  # ------------------------------------------------------
-  cloudwatch-agent:
-    image: amazon/cloudwatch-agent:latest
-    container_name: cloudwatch-agent
-    ports:
-      - "9106:9106"
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
 
   # ------------------------------------------------------
   # Prometheus
@@ -91,14 +78,9 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
-      - redis
+      - backend
       - redis-exporter
-      - node-exporter
-      - cloudwatch-agent
-      - pushgateway
 
   # ------------------------------------------------------
   # Grafana
@@ -112,8 +94,10 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards
       - ./grafana/provisioning:/etc/grafana/provisioning
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
     depends_on:
       - prometheus
+
+volumes:
+  qdrant_data:

@@ -1,13 +1,19 @@
 # ============================
 # GetFit AI Backend
 # ============================
-FROM node:20-alpine AS base
+FROM node:20-slim
 
+# ---- System dependencies for PDF + OCR ----
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+    poppler-utils \
+    ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# ---- App setup ----
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-
-# Install only production deps
 RUN npm ci --omit=dev
 
 COPY src ./src
