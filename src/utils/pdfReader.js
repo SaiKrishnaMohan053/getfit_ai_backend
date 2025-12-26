@@ -2,7 +2,7 @@
 const pdfParse = require("pdf-parse");
 const { logger } = require("./logger");
 const { createWorker } = require("tesseract.js");
-const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
+const pdfjsLib = require("pdfjs-dist/legacy/build/pdf");
 
 /**
  * OCR scanned PDFs using Tesseract
