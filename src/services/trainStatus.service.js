@@ -1,9 +1,13 @@
 // src/services/trainStatus.service.js
 
 const { qdrantClient } = require("../config/qdrantClient");
-const { queueAI } = require("../utils/queue");
+const { Queue } = require("bullmq");
 const { config } = require("../config/env");
 const { logger } = require("../utils/logger");
+
+const statusQueue = new Queue("ai-tasks", {
+  connection: { url: config.REDIS_URL },
+})
 
 /**
  * Returns high-level status info for the Qdrant collection.
@@ -68,12 +72,21 @@ async function listTrainedDocuments() {
   }
 }
 
+async function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Redis timeout")), ms)
+    ),
+  ]);
+}
+
 /*
   Returns the BullMQ job status for a given training jobId.
  */
 async function getJobStatus(jobId) {
   try {
-    const job = await queueAI.getJob(jobId);
+    const job = await withTimeout(statusQueue.getJob(jobId), 3000);
 
     if (!job) {
       return{
@@ -82,7 +95,7 @@ async function getJobStatus(jobId) {
       };
     }
 
-    const state = await job.getState();
+    const state = await withTimeout(job.getState(), 2000);
 
     return {
       found: true,
