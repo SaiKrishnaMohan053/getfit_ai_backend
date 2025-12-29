@@ -81,7 +81,7 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
           type: "exponential",
           delay: 2000,
         },
-        removeOnComplete: true,
+        removeOnComplete: 100,
         removeOnFail: false,
       }
     ).catch(err => {
