@@ -6,4 +6,4 @@ const connection = { url: config.REDIS_URL };
 
 const queueAI = new Queue("ai-tasks", { connection });
 
-module.exports = { queueAI };
+module.exports = { queueAI, connection };

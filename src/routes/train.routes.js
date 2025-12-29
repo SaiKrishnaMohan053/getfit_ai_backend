@@ -2,7 +2,6 @@
 
 const express = require("express");
 const multer = require("multer");
-const { trainDocument } = require("../services/ingest.service");
 const { logger } = require("../utils/logger");
 const { aiQueue } = require("../config/aiQueue");
 const fs = require("fs");
@@ -23,10 +22,12 @@ const router = express.Router();
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
-      cb(null, os.tmpdir());
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdf-train-"));
+      req._tempDir = tempDir;
+      cb(null, tempDir);
     },
     filename: (req, file, cb) => {
-      cb(null, `${Date.now()}-${file.originalname}`);
+      cb(null, file.originalname);
     }
   }),
   limits: {
@@ -55,11 +56,14 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
     const fileName = file.originalname;
     const cleanDomain = (domain || "general").trim().toLowerCase();
 
+    logger.info(`PDF uploaded: ${fileName}, size=${file.size} bytes, path=${pdfPath}`);
     logger.info(`Training request received for ${fileName} (domain=${cleanDomain})`);
 
     const bookSlug = slugify(fileName);
     const jobId = `training:${bookSlug}:${Date.now()}`;
 
+    logger.info(`Queueing training job ${jobId}`);
+    logger.info("Before queue.add");
     await aiQueue.add(
       "document-training",
       {
@@ -81,6 +85,8 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
         removeOnFail: false,
       }
     );
+    logger.info("After queue.add");
+    logger.info(`Training job queued successfully: ${jobId}`);
 
     res.status(202).json({
       ok: true,

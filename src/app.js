@@ -103,10 +103,4 @@ app.use((req, res, next) => {
 // Global error handler
 app.use(errorHandler);
 
-// Load BullMQ worker only when NOT in tests
-if (process.env.NODE_ENV !== "test" && process.env.E2E_TEST !== "1") {
-  console.log("Starting BullMQ worker (normal server mode)");
-  require("./config/aiQueue");
-}
-
 module.exports = app;

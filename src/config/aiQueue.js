@@ -2,8 +2,7 @@
 // Initializes BullMQ queue + worker for background AI tasks
 
 const { Worker, QueueEvents } = require("bullmq");
-const { queueAI } = require("../utils/queue");
-const { config } = require("./env");
+const { queueAI, connection } = require("../utils/queue");
 const { logger } = require("../utils/logger");
 const metrics = require("./prometheusMetrics");
 
@@ -11,8 +10,6 @@ const isUnitTest = process.env.IS_UNIT_TEST === "1";
 const isE2eTest = process.env.E2E_TEST === "1";
 
 function initializeQueue() {
-  const connection = { url: config.REDIS_URL };
-
   const aiEvents = new QueueEvents("ai-tasks", { connection });
 
   aiEvents.on("completed", ({ jobId }) => {

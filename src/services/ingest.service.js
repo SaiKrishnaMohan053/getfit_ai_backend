@@ -165,8 +165,12 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
   } finally {
     // Clean up temp file
     try {
-      fs.unlinkSync(pdfPath);
-      fs.rmdirSync(path.dirname(pdfPath));
+      if (pdfPath && fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+
+      const dir = path.dirname(pdfPath || "");
+      if (dir && dir.includes(path.join(os.tmpdir(), "pdf-train-"))) {
+        fs.rmdirSync(dir);
+      }
     } catch (_) {}
   }
 }
