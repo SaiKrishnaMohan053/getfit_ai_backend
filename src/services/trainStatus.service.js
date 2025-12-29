@@ -1,6 +1,7 @@
 // src/services/trainStatus.service.js
 
 const { qdrantClient } = require("../config/qdrantClient");
+const { queueAI } = require("../utils/queue");
 const { config } = require("../config/env");
 const { logger } = require("../utils/logger");
 
@@ -67,4 +68,36 @@ async function listTrainedDocuments() {
   }
 }
 
-module.exports = { getTrainStatus, listTrainedDocuments };
+/*
+  Returns the BullMQ job status for a given training jobId.
+ */
+async function getJobStatus(jobId) {
+  try {
+    const job = await queueAI.getJob(jobId);
+
+    if (!job) {
+      return{
+        found: false,
+        status: "not_found",
+      };
+    }
+
+    const state = await job.getState();
+
+    return {
+      found: true,
+      jobId: job.id,
+      status: state,
+      progress: job.progress || 0,
+      attemptsMade: job.attemptsMade,
+      timestamp: new Date().toISOString(),
+      result: state === "completed" ? job.returnvalue : undefined,
+      failedReason: state === "failed" ? job.failedReason : undefined,
+    };
+  } catch (err) {
+    logger.error(`Job status fetch failed: ${err.message}`);
+    throw new Error("Unable to fetch training job status");
+  }
+}
+
+module.exports = { getJobStatus, getTrainStatus, listTrainedDocuments };

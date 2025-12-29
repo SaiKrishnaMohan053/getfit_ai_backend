@@ -1,7 +1,8 @@
 // src/config/aiQueue.js
 // Initializes BullMQ queue + worker for background AI tasks
 
-const { Queue, Worker, QueueEvents } = require("bullmq");
+const { Worker, QueueEvents } = require("bullmq");
+const { queueAI } = require("../utils/queue");
 const { config } = require("./env");
 const { logger } = require("../utils/logger");
 const metrics = require("./prometheusMetrics");
@@ -12,7 +13,6 @@ const isE2eTest = process.env.E2E_TEST === "1";
 function initializeQueue() {
   const connection = { url: config.REDIS_URL };
 
-  const aiQueue = new Queue("ai-tasks", { connection });
   const aiEvents = new QueueEvents("ai-tasks", { connection });
 
   aiEvents.on("completed", ({ jobId }) => {
@@ -76,7 +76,7 @@ function initializeQueue() {
   });
 
   logger.info("BullMQ worker initialized");
-  return { aiQueue, worker };
+  return { aiQueue: queueAI, worker };
 }
 
 // ---- EXPORT LOGIC ----

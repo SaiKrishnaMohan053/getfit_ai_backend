@@ -21,13 +21,17 @@ const router = express.Router();
 
 // Store uploaded PDF entirely in memory
 const upload = multer({
-  storage: multer.memoryStorage(),
-  fileFilter: (req, file, cb) => {
-    if (!file.mimetype.includes("pdf")) {
-      return cb(new Error("Only PDF files are allowed"));
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, os.tmpdir());
+    },
+    filename: (req, file, cb) => {
+      cb(null, `${Date.now()}-${file.originalname}`);
     }
-    cb(null, true);
-  },
+  }),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50 MB limit
+  }
 });
 
 /**
@@ -47,11 +51,8 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
       });
     }
 
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdf-train-"));
-    const pdfPath = path.join(tempDir, file.originalname);
-
-    fs.writeFileSync(pdfPath, file.buffer);
-    const fileName = file.originalname?.trim() || "uploaded.pdf";
+    const pdfPath = file.path;
+    const fileName = file.originalname;
     const cleanDomain = (domain || "general").trim().toLowerCase();
 
     logger.info(`Training request received for ${fileName} (domain=${cleanDomain})`);

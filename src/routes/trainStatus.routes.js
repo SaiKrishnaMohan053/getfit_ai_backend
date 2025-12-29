@@ -2,6 +2,7 @@
 
 const express = require("express");
 const {
+  getJobStatus,
   getTrainStatus,
   listTrainedDocuments,
 } = require("../services/trainStatus.service");
@@ -44,6 +45,35 @@ router.get("/list", async (req, res, next) => {
     });
   } catch (err) {
     logger.error(`List trained documents failed: ${err.message}`);
+    next(err);
+  }
+});
+
+/**
+ * GET /api/train/:jobId/status
+ * Returns BullMQ job state for a training request
+ */
+router.get("/:jobId/status", async (req, res, next) => {
+  try {
+    const { jobId } = req.params;
+
+    const status = await getJobStatus(jobId);
+
+    if (!status.found) {
+      return res.status(404).json({
+        ok: false,
+        error: "Training job not found",
+        jobId,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.json({
+      ok: true,
+      ...status,
+    });
+  } catch (err) {
+    logger.error(`Train job status error: ${err.message}`);
     next(err);
   }
 });
