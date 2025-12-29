@@ -1,18 +1,16 @@
 # ============================
 # GetFit AI Backend
 # ============================
-FROM node:20-slim
+FROM node:20-bullseye
 
 # ---- System dependencies for PDF + OCR ----
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-    poppler-utils \
-    ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
-# ---- App setup ----
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- App setup ----
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 

@@ -58,7 +58,7 @@ async function withRetry(fn, label) {
 }
 
 // ---------------- MAIN INGEST ----------------
-async function trainDocument({ pdfBuffer, domain, source_file, version_tag }) {
+async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
   const start = Date.now();
 
   const vtag =
@@ -68,99 +68,107 @@ async function trainDocument({ pdfBuffer, domain, source_file, version_tag }) {
   logger.info(`Training started: ${source_file}`);
   writeLog(`Training started: ${source_file}`);
 
-  // Parse PDF
-  const text = await parsePdf(pdfBuffer);
-  if (!text) {
-    logger.error("Parsed PDF returned empty text");
-    throw new Error("Parsed PDF returned empty text");
+  try{
+    // Parse PDF
+    const buffer = fs.readFileSync(pdfPath);
+    const text = await parsePdf(buffer);
+    if (!text) {
+      logger.error("Parsed PDF returned empty text");
+      throw new Error("Parsed PDF returned empty text");
+    }
+
+    // Generate document identity
+    const doc_id = buildDocId(buffer);
+    const book_title = source_file.replace(/\.pdf$/i, "");
+    const category = domain;
+
+    // Chunk (SMART)
+    const chunks = chunkText(text, {
+      maxChars: 4000,
+      overlapSentences: 2,
+    });
+
+    const totalChunks = chunks.length;
+    if (!totalChunks) {
+      logger.error("No chunks generated from PDF");
+      throw new Error("No chunks generated from PDF");
+    }
+
+    writeLog(`Generated ${totalChunks} chunks`);
+
+    // Batch embed + upsert
+    let embedded = 0;
+    let inserted = 0;
+
+    for (let i = 0; i < totalChunks; i += BATCH_SIZE) {
+      const batch = chunks.slice(i, i + BATCH_SIZE);
+
+      const vectors = await withRetry(
+        () => embedText(batch),
+        "Embedding batch"
+      );
+
+      embedded += vectors.length;
+
+      const points = batch.map((chunk, idx) => ({
+        id: uuidv4(),
+        vector: vectors[idx],
+        payload: {
+          text: chunk,
+          doc_id,
+          book_title,
+          domain,
+          category,
+          source_file,
+          version_tag: vtag,
+          chunk_index: i + idx,
+          total_chunks: totalChunks,
+          created_at: new Date().toISOString(),
+        },
+      }));
+
+      await withRetry(async () => {
+        const startHr = process.hrtime();
+        try {
+          await qdrantClient.upsert(config.QDRANT_COLLECTION, {
+            points,
+            wait: true,
+          });
+
+          qdrantRequests.inc({ operation: "upsert", status: "success" });
+          qdrantLatency.observe(
+            process.hrtime(startHr)[0] +
+              process.hrtime(startHr)[1] / 1e9
+          );
+        } catch (err) {
+          qdrantRequests.inc({ operation: "upsert", status: "error" });
+          throw err;
+        }
+      }, "Upsert batch");
+      inserted += points.length;
+    }
+
+    const seconds = ((Date.now() - start) / 1000).toFixed(2);
+    writeLog(`Completed ${inserted} chunks in ${seconds}s`);
+  
+    return {
+      ok: true,
+      source_file,
+      domain,
+      version_tag: vtag,
+      chunks: totalChunks,
+      embedded,
+      inserted,
+      seconds,
+      collection: config.QDRANT_COLLECTION,
+    };
+  } finally {
+    // Clean up temp file
+    try {
+      fs.unlinkSync(pdfPath);
+      fs.rmdirSync(path.dirname(pdfPath));
+    } catch (_) {}
   }
-
-  // Generate document identity
-  const doc_id = buildDocId(pdfBuffer);
-  const book_title = source_file.replace(/\.pdf$/i, "");
-  const category = domain;
-
-  // Chunk (SMART)
-  const chunks = chunkText(text, {
-    maxChars: 4000,
-    overlapSentences: 2,
-  });
-
-  const totalChunks = chunks.length;
-  if (!totalChunks) {
-    logger.error("No chunks generated from PDF");
-    throw new Error("No chunks generated from PDF");
-  }
-
-  writeLog(`Generated ${totalChunks} chunks`);
-
-  // Batch embed + upsert
-  let embedded = 0;
-  let inserted = 0;
-
-  for (let i = 0; i < totalChunks; i += BATCH_SIZE) {
-    const batch = chunks.slice(i, i + BATCH_SIZE);
-
-    const vectors = await withRetry(
-      () => embedText(batch),
-      "Embedding batch"
-    );
-
-    embedded += vectors.length;
-
-    const points = batch.map((chunk, idx) => ({
-      id: uuidv4(),
-      vector: vectors[idx],
-      payload: {
-        text: chunk,
-        doc_id,
-        book_title,
-        domain,
-        category,
-        source_file,
-        version_tag: vtag,
-        chunk_index: i + idx,
-        total_chunks: totalChunks,
-        created_at: new Date().toISOString(),
-      },
-    }));
-
-    await withRetry(async () => {
-      const startHr = process.hrtime();
-      try {
-        await qdrantClient.upsert(config.QDRANT_COLLECTION, {
-          points,
-          wait: true,
-        });
-
-        qdrantRequests.inc({ operation: "upsert", status: "success" });
-        qdrantLatency.observe(
-          process.hrtime(startHr)[0] +
-            process.hrtime(startHr)[1] / 1e9
-        );
-      } catch (err) {
-        qdrantRequests.inc({ operation: "upsert", status: "error" });
-        throw err;
-      }
-    }, "Upsert batch");
-
-    inserted += points.length;
-  }
-
-  const seconds = ((Date.now() - start) / 1000).toFixed(2);
-  writeLog(`Completed ${inserted} chunks in ${seconds}s`);
-
-  return {
-    ok: true,
-    source_file,
-    domain,
-    version_tag: vtag,
-    chunks: totalChunks,
-    embedded,
-    inserted,
-    seconds,
-    collection: config.QDRANT_COLLECTION,
-  };
 }
 
 module.exports = { trainDocument };

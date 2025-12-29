@@ -51,6 +51,11 @@ function initializeQueue() {
         return response.choices[0].message.content;
       }
 
+      if (taskType === "document-training") {
+        const { trainDocument } = require("../services/ingest.service");
+        return await trainDocument(payload);
+      }
+
       throw new Error(`Unknown task type: ${taskType}`);
     },
     {

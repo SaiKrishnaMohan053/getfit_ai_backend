@@ -4,6 +4,18 @@ const express = require("express");
 const multer = require("multer");
 const { trainDocument } = require("../services/ingest.service");
 const { logger } = require("../utils/logger");
+const { aiQueue } = require("../config/aiQueue");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
+function slugify(filename) {
+  return filename
+    .toLowerCase()
+    .replace(/\.pdf$/, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
 
 const router = express.Router();
 
@@ -35,22 +47,46 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
       });
     }
 
-    const pdfBuffer = file.buffer;
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdf-train-"));
+    const pdfPath = path.join(tempDir, file.originalname);
+
+    fs.writeFileSync(pdfPath, file.buffer);
     const fileName = file.originalname?.trim() || "uploaded.pdf";
     const cleanDomain = (domain || "general").trim().toLowerCase();
 
     logger.info(`Training request received for ${fileName} (domain=${cleanDomain})`);
 
-    // Call the ingestion pipeline
-    const result = await trainDocument({
-      pdfBuffer,
-      domain: cleanDomain,
-      source_file: fileName,
-    });
+    const bookSlug = slugify(fileName);
+    const jobId = `training:${bookSlug}:${Date.now()}`;
 
-    res.json({
+    await aiQueue.add(
+      "document-training",
+      {
+        taskType: "document-training",
+        payload: {
+          pdfPath,
+          domain: cleanDomain,
+          source_file: fileName,
+        },
+      },
+      {
+        jobId,
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 2000,
+        },
+        removeOnComplete: true,
+        removeOnFail: false,
+      }
+    );
+
+    res.status(202).json({
       ok: true,
-      ...result,
+      jobId,
+      status: "queued",
+      source_file: fileName,
+      domain: cleanDomain,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {

@@ -1,8 +1,11 @@
 // tests/services/ingest.service.test.js
 // Unit tests for trainDocument ingestion pipeline
 jest.mock("fs", () => ({
-  existsSync: jest.fn().mockReturnValue(true),
+  readFileSync: jest.fn(() => Buffer.from("dummy pdf content")),
+  existsSync: jest.fn(() => true),
   mkdirSync: jest.fn(),
+  unlinkSync: jest.fn(),
+  rmdirSync: jest.fn(),
   appendFileSync: jest.fn(),
 }));
 
@@ -46,11 +49,10 @@ const { trainDocument } = require("../../src/services/ingest.service");
 jest.setTimeout(15000);
 
 describe("SERVICE: trainDocument (ingestion pipeline)", () => {
-  const pdfBuffer = Buffer.from("fake-pdf-binary");
 
   beforeEach(() => {
+    fs.readFileSync.mockReturnValue(Buffer.from("mock pdf content"));
     jest.clearAllMocks();
-    jest.resetAllMocks();
   });
 
   it("throws when parsed PDF text is empty", async () => {
@@ -58,7 +60,7 @@ describe("SERVICE: trainDocument (ingestion pipeline)", () => {
 
     await expect(
       trainDocument({
-        pdfBuffer,
+        pdfPath: "/tmp/fake.pdf",
         domain: "training",
         source_file: "empty.pdf",
       })
@@ -73,7 +75,7 @@ describe("SERVICE: trainDocument (ingestion pipeline)", () => {
 
     await expect(
       trainDocument({
-        pdfBuffer,
+        pdfPath: "/tmp/nochunks.pdf",
         domain: "training",
         source_file: "nochunks.pdf",
       })
@@ -89,13 +91,13 @@ describe("SERVICE: trainDocument (ingestion pipeline)", () => {
     qdrantClient.upsert.mockResolvedValue({ status: "ok" });
 
     const result = await trainDocument({
-      pdfBuffer,
+      pdfPath: "/tmp/fake.pdf",
       domain: "training",
       source_file: "simple.pdf",
       version_tag: "v1",
     });
 
-    expect(parsePdf).toHaveBeenCalledWith(pdfBuffer);
+    expect(parsePdf).toHaveBeenCalledWith(Buffer.from("mock pdf content"));
     expect(chunkText).toHaveBeenCalledWith(
       "This is a simple PDF text",
       {
@@ -133,7 +135,7 @@ describe("SERVICE: trainDocument (ingestion pipeline)", () => {
     qdrantClient.upsert.mockResolvedValue({ status: "ok" });
 
     const result = await trainDocument({
-      pdfBuffer,
+      pdfPath: "/tmp/retry.pdf",
       domain: "training",
       source_file: "retry.pdf",
     });
@@ -152,7 +154,7 @@ describe("SERVICE: trainDocument (ingestion pipeline)", () => {
 
     await expect(
       trainDocument({
-        pdfBuffer,
+        pdfPath: "/tmp/fail.pdf",
         domain: "training",
         source_file: "fail.pdf",
       })
