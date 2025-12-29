@@ -6,7 +6,8 @@ const { logger } = require("./utils/logger");
 require("./config/redisClient");
 
 logger.info("Starting BullMQ worker");
-require("./config/aiQueue");
+const { startAiWorker } = require("./config/aiQueue");
+startAiWorker();
 
 const app = require("./app");
 

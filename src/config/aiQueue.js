@@ -1,93 +1,76 @@
 // src/config/aiQueue.js
-// Initializes BullMQ queue + worker for background AI tasks
-
 const { Worker, QueueEvents } = require("bullmq");
-const { queueAI, connection } = require("../utils/queue");
+const { connection } = require("./queues");
 const { logger } = require("../utils/logger");
 const metrics = require("./prometheusMetrics");
 
 const isUnitTest = process.env.IS_UNIT_TEST === "1";
 const isE2eTest = process.env.E2E_TEST === "1";
 
-function initializeQueue() {
-  const aiEvents = new QueueEvents("ai-tasks", { connection });
+function startAiWorker() {
+  if (isUnitTest) {
+    logger.info("BullMQ worker disabled (UNIT TEST MODE)");
+    return null;
+  }
 
-  aiEvents.on("completed", ({ jobId }) => {
-    logger.info(`Job ${jobId} completed successfully`);
+  // ---- Queue Events (read-only, safe) ----
+  const queueEvents = new QueueEvents("ai-tasks", { connection, autorun: !isUnitTest });
+
+  queueEvents.on("completed", ({ jobId }) => {
+    logger.info(`Job completed: ${jobId}`);
   });
 
-  aiEvents.on("failed", ({ jobId, failedReason }) => {
-    logger.error(`Job ${jobId} failed: ${failedReason}`);
+  queueEvents.on("failed", ({ jobId, failedReason }) => {
+    logger.error(`Job failed: ${jobId} | reason=${failedReason}`);
   });
 
+  // ---- Worker ----
   const worker = new Worker(
     "ai-tasks",
     async (job) => {
       const { taskType, payload } = job.data;
 
-      logger.info(`Processing async job: ${taskType}`);
+      logger.info(`Worker picked job ${job.id} | type=${taskType}`);
+      metrics.bullActive.inc();
 
-      // Mock mode for E2E
-      if (isE2eTest && taskType === "openai-background") {
-        metrics.bullActive.inc();
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        metrics.bullCompleted.inc();
+      try {
+        // ---- E2E mock mode ----
+        if (isE2eTest && taskType === "document-training") {
+          await new Promise((r) => setTimeout(r, 100));
+          return { ok: true, mock: true };
+        }
+
+        // ---- Real document training ----
+        if (taskType === "document-training") {
+          const { trainDocument } = require("../services/ingest.service");
+          return await trainDocument(payload);
+        }
+
+        throw new Error(`Unknown task type: ${taskType}`);
+      } finally {
         metrics.bullActive.dec();
-        return "summary";
       }
-
-      // Real background OpenAI
-      if (taskType === "openai-background") {
-        const { openai } = require("./openaiClient");
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          temperature: 0.4,
-          messages: payload.messages,
-        });
-
-        return response.choices[0].message.content;
-      }
-
-      if (taskType === "document-training") {
-        const { trainDocument } = require("../services/ingest.service");
-        return await trainDocument(payload);
-      }
-
-      throw new Error(`Unknown task type: ${taskType}`);
     },
     {
       connection,
-      concurrency: 3,
+      concurrency: 2,
     }
   );
 
-  // Metrics
-  worker.on("active", () => metrics.bullActive.inc());
+  // ---- Worker lifecycle metrics ----
   worker.on("completed", () => {
     metrics.bullCompleted.inc();
-    metrics.bullActive.dec();
   });
-  worker.on("failed", () => {
+
+  worker.on("failed", (job, err) => {
     metrics.bullFailed.inc();
-    metrics.bullActive.dec();
+    logger.error(`Worker error on job ${job?.id}: ${err.message}`);
   });
 
-  logger.info("BullMQ worker initialized");
-  return { aiQueue: queueAI, worker };
+  logger.info("BullMQ worker started successfully");
+  return worker;
 }
 
-// ---- EXPORT LOGIC ----
-let exported;
-
-if (isUnitTest) {
-  logger.info("BullMQ disabled (UNIT TEST MODE)");
-  exported = {
-    aiQueue: { add: async () => {} },
-    worker: null,
-    __disabled: true,
-  };
-} else {
-  exported = initializeQueue();
-}
-
-module.exports = exported;
+module.exports = {
+  startAiWorker,
+};

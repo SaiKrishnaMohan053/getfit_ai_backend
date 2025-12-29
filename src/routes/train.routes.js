@@ -3,7 +3,7 @@
 const express = require("express");
 const multer = require("multer");
 const { logger } = require("../utils/logger");
-const { aiQueue } = require("../config/aiQueue");
+const { queueAI } = require("../utils/queue");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -64,7 +64,7 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
 
     logger.info(`Queueing training job ${jobId}`);
     logger.info("Before queue.add");
-    await aiQueue.add(
+    queueAI.add(
       "document-training",
       {
         taskType: "document-training",
@@ -84,7 +84,9 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
         removeOnComplete: true,
         removeOnFail: false,
       }
-    );
+    ).catch(err => {
+      logger.error(`Queue add failed async: ${err.message}`);
+    })
     logger.info("After queue.add");
     logger.info(`Training job queued successfully: ${jobId}`);
 
