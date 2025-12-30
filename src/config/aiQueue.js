@@ -1,6 +1,6 @@
 // src/config/aiQueue.js
 const { Worker, QueueEvents } = require("bullmq");
-const { connection } = require("../utils/queue");
+const { connection } = require("../config/queue");
 const { logger } = require("../utils/logger");
 const metrics = require("./prometheusMetrics");
 
