@@ -39,6 +39,9 @@
         { "name": "REDIS_HOST", "value": "master.getfit-redis.hjxkti.use1.cache.amazonaws.com" },
         { "name": "REDIS_PORT", "value": "6379" },
 
+        { "name": "AWS_REGION", "value": "us-east-1" },
+        { "name": "AWS_TRAINING_BUCKET", "value": "getfit-ai-training-pdfs" },
+
         { "name": "STAGING_BASE_URL", "value": "http://localhost:8080" }
       ],
 

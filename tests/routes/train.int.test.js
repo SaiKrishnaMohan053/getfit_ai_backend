@@ -26,6 +26,6 @@ describe("ROUTE: POST /api/train", () => {
     expect(res.body.status).toBe("queued");
     expect(res.body).toHaveProperty("jobId");
     expect(res.body).toHaveProperty("source_file", "sample.pdf");
-    expect(res.body).toHaveProperty("timestamp");
+    expect(res.body).toHaveProperty("status", "queued");
   });
 });

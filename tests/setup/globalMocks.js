@@ -42,3 +42,29 @@ jest.mock("../../src/config/aiQueue", () => ({
     on: jest.fn(),
   }
 }));
+
+// Global mock for AWS S3 SDK
+jest.mock("@aws-sdk/client-s3", () => {
+  return {
+    S3Client: jest.fn(() => ({
+      send: jest.fn().mockResolvedValue({}),
+    })),
+
+    PutObjectCommand: jest.fn(params => params),
+
+    GetObjectCommand: jest.fn(params => ({
+      ...params,
+      Body: {
+        pipe: jest.fn(),
+        on: jest.fn(),
+      },
+    })),
+  }
+});
+
+// Global mock for local S3Client
+jest.mock("../../src/config/s3Client", () => ({
+  s3Client: {
+    send: jest.fn().mockResolvedValue({}),
+  },
+}));

@@ -31,6 +31,7 @@ const config = {
   // Optional future values (Mongo, AWS, etc.)
   MONGO_URI: process.env.MONGO_URI,
   AWS_REGION: process.env.AWS_REGION || "us-east-1",
+  AWS_TRAINING_BUCKET: process.env.AWS_TRAINING_BUCKET || "getfit-ai-training-pdfs",
 };
 
 /**
@@ -40,6 +41,7 @@ const config = {
 const requiredVars = [
   "QDRANT_URL",
   "OPENAI_API_KEY",
+  "AWS_TRAINING_BUCKET",
 ];
 
 for (const key of requiredVars) {

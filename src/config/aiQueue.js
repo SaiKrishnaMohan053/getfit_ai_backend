@@ -43,7 +43,30 @@ function startAiWorker() {
         // ---- Real document training ----
         if (taskType === "document-training") {
           const { trainDocument } = require("../services/ingest.service");
-          return await trainDocument(payload);
+          const { downloadPdfFromS3, cleanupTempDir } = require("../utils/s3Download");
+
+          const { s3Bucket, s3Key, source_file, domain } = payload;
+
+          let tempDir;
+
+          try {
+            const download = await downloadPdfFromS3({
+              bucket: s3Bucket,
+              key: s3Key,
+            });
+
+            tempDir = download.tempDir;
+
+            return await trainDocument({
+              pdfPath: download.filePath,
+              source_file,
+              domain,
+            });
+          } finally {
+            if (tempDir) {
+              cleanupTempDir(tempDir);
+            }
+          }
         }
 
         throw new Error(`Unknown task type: ${taskType}`);

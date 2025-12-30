@@ -1,6 +1,6 @@
-// src/config/queues.js
+// src/config/queue.js
 const { Queue } = require("bullmq");
-const { config } = require("../config/env");
+const { config } = require("./env");
 
 const isTest = process.env.NODE_ENV === "test";
 
@@ -12,6 +12,7 @@ const connection = {
   tls: config.REDIS_TLS === "true" ? {} : undefined,
   connectTimeout: 5000,
   maxRetriesPerRequest: 1,
+  enableReadyCheck: false,
   enableOfflineQueue: false,
 };
 

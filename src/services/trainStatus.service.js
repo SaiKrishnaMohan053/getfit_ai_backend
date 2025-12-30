@@ -1,7 +1,7 @@
 // src/services/trainStatus.service.js
 
 const { qdrantClient } = require("../config/qdrantClient");
-const { queueAI } = require("../utils/queue");
+const { queueAI } = require("../config/queue");
 const { config } = require("../config/env");
 const { logger } = require("../utils/logger");
 

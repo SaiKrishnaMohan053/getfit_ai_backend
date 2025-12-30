@@ -3,11 +3,9 @@
 const express = require("express");
 const multer = require("multer");
 const { logger } = require("../utils/logger");
-const { queueAI } = require("../utils/queue") || {};
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-const { isTest } = require("../config/env");
+const { queueAI } = require("../config/queue") || {};
+const { uploadPdfToS3 } = require("../utils/s3Upload");
+const { config, isTest } = require("../config/env");
 
 function slugify(filename) {
   return filename
@@ -21,29 +19,11 @@ const router = express.Router();
 
 // Store uploaded PDF entirely in memory
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdf-train-"));
-      req._tempDir = tempDir;
-      cb(null, tempDir);
-    },
-    filename: (req, file, cb) => {
-      cb(null, file.originalname);
-    }
-  }),
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 300 * 1024 * 1024, // 300 MB limit
   }
 });
-
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Queue add timeout")), ms)
-    ),
-  ]);
-}
 
 /**
  * POST /api/train
@@ -58,46 +38,47 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
       return res.status(400).json({
         ok: false,
         error: "PDF file is required",
-        timestamp: new Date().toISOString(),
       });
     }
 
-    const pdfPath = file.path;
-    const fileName = file.originalname;
     const cleanDomain = (domain || "general").trim().toLowerCase();
-
-    logger.info(`PDF uploaded: ${fileName}, size=${file.size} bytes, path=${pdfPath}`);
-    logger.info(`Training request received for ${fileName} (domain=${cleanDomain})`);
-
-    const bookSlug = slugify(fileName);
+    const bookSlug = slugify(file.originalname);
     const jobId = `training:${bookSlug}:${Date.now()}`;
 
-    logger.info(`Queueing training job ${jobId}`);
-    logger.info("Before queue.add");
-    if (isTest || !queueAI) {
-      logger.info("Test mode detected — skipping queue, returning 202");
+    logger.info(`Uploading PDF to S3: ${file.originalname}`);
 
+    const { bucket, key } = await uploadPdfToS3({
+      bucket: config.AWS_TRAINING_BUCKET,
+      buffer: file.buffer,
+      fileName: file.originalname,
+      ContentType: file.mimetype,
+    });
+
+    logger.info(`PDF uploaded to S3: s3://${bucket}/${key}`);
+
+    if (isTest || !queueAI) {
       return res.status(202).json({
         ok: true,
         jobId: `test-training-${Date.now()}`,
         status: "queued",
-        source_file: fileName,
+        source_file: file.originalname,
         domain: cleanDomain,
-        timestamp: new Date().toISOString(),
         testMode: true,
       });
     }
     logger.info("Queue isReady start...");
     await queueAI.waitUntilReady();
     logger.info("Queue isReady done.");
-    await withTimeout(queueAI.add(
+
+    await queueAI.add(
       "document-training",
       {
         taskType: "document-training",
         payload: {
-          pdfPath,
+          s3Bucket: bucket,
+          s3Key: key,
           domain: cleanDomain,
-          source_file: fileName,
+          source_file: file.originalname,
         },
       },
       {
@@ -110,19 +91,16 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
         removeOnComplete: 100,
         removeOnFail: false,
       }
-    ), 5000).catch(err => {
-      logger.error(`Queue add failed async: ${err.message}`);
-    })
-    logger.info("After queue.add");
+    );
+    
     logger.info(`Training job queued successfully: ${jobId}`);
 
-    res.status(202).json({
+    return res.status(202).json({
       ok: true,
       jobId,
       status: "queued",
-      source_file: fileName,
+      source_file: file.originalname,
       domain: cleanDomain,
-      timestamp: new Date().toISOString(),
     });
   } catch (err) {
     logger.error(`Training failed: ${err.message}`);

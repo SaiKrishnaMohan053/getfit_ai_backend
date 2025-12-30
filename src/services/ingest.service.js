@@ -163,17 +163,10 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
       seconds,
       collection: config.QDRANT_COLLECTION,
     };
-  } finally {
-    // Clean up temp file
-    try {
-      if (pdfPath && fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
-
-      const dir = path.dirname(pdfPath || "");
-      const tmpRoot = os.tmpdir();
-      if (dir && dir.startsWith(tmpRoot) && dir.includes("pdf-train")) {
-        fs.rmSync(dir, { recursive: true, force: true });
-      }
-    } catch (_) {}
+  } catch (err) {
+    logger.error(`Training failed: ${err.message}`);
+    writeLog(`Training failed: ${err.message}`);
+    throw err;
   }
 }
 

@@ -18,6 +18,7 @@ const redisClient = new Redis({
   tls: config.REDIS_TLS ? {} : undefined,
   connectTimeout: 2000,
   maxRetriesPerRequest: 1,
+  enableReadyCheck: false,
   enableOfflineQueue: false,
 });
 
