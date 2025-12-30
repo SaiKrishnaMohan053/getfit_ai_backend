@@ -1,13 +1,9 @@
 // src/services/trainStatus.service.js
 
 const { qdrantClient } = require("../config/qdrantClient");
-const { Queue } = require("bullmq");
+const { queueAI } = require("../utils/queue");
 const { config } = require("../config/env");
 const { logger } = require("../utils/logger");
-
-const statusQueue = new Queue("ai-tasks", {
-  connection: { url: config.REDIS_URL },
-})
 
 /**
  * Returns high-level status info for the Qdrant collection.
@@ -86,7 +82,7 @@ async function withTimeout(promise, ms) {
  */
 async function getJobStatus(jobId) {
   try {
-    const job = await withTimeout(statusQueue.getJob(jobId), 3000);
+    const job = await withTimeout(queueAI.getJob(jobId), 3000);
 
     if (!job) {
       return{

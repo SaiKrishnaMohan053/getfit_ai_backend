@@ -1,6 +1,7 @@
 // src/services/ingest.service.js
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 
@@ -168,8 +169,9 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
       if (pdfPath && fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
 
       const dir = path.dirname(pdfPath || "");
-      if (dir && dir.includes(path.join(os.tmpdir(), "pdf-train-"))) {
-        fs.rmdirSync(dir);
+      const tmpRoot = os.tmpdir();
+      if (dir && dir.startsWith(tmpRoot) && dir.includes("pdf-train")) {
+        fs.rmSync(dir, { recursive: true, force: true });
       }
     } catch (_) {}
   }

@@ -4,6 +4,8 @@
 const dotenv = require("dotenv");
 dotenv.config({ override: false });
 
+const isTest = process.env.NODE_ENV === "test";
+
 /**
  * Normalized application configuration.
  * All environment variables are loaded here for clarity and validation.
@@ -13,6 +15,7 @@ const config = {
   REDIS_URL: process.env.REDIS_URL ||  "getfit-redis-hjxkti.serverless.use1.cache.amazonaws.com:6379",
   REDIS_HOST: process.env.REDIS_HOST || "getfit-redis-hjxkti.serverless.use1.cache.amazonaws.com",
   REDIS_PORT: Number(process.env.REDIS_PORT || 6379),
+  REDIS_TLS: process.env.REDIS_TLS || "true",
 
   // App environment
   NODE_ENV: process.env.NODE_ENV || "development",
@@ -45,4 +48,4 @@ for (const key of requiredVars) {
   }
 }
 
-module.exports = { config };
+module.exports = { config, isTest };
