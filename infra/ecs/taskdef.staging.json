@@ -5,8 +5,8 @@
 
   "requiresCompatibilities": ["FARGATE"],
 
-  "cpu": "512",
-  "memory": "1024",
+  "cpu": "1024",
+  "memory": "2048",
 
   "executionRoleArn": "arn:aws:iam::879519940213:role/ecsTaskExecutionRole",
   "taskRoleArn": "arn:aws:iam::879519940213:role/getfit-ai-taskRole",

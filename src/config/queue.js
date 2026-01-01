@@ -11,9 +11,9 @@ const connection = {
   port: config.REDIS_PORT || 6379,
   tls: config.REDIS_TLS === "true" ? {} : undefined,
   connectTimeout: 5000,
-  maxRetriesPerRequest: 1,
+  maxRetriesPerRequest: null,
   enableReadyCheck: false,
-  enableOfflineQueue: false,
+  enableOfflineQueue: true,
 };
 
 if (!isTest) {

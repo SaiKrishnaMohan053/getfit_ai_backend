@@ -76,7 +76,9 @@ function startAiWorker() {
     },
     {
       connection,
-      concurrency: 2,
+      concurrency: 1,
+      lockDuration: 15 * 60 * 1000, // 15 minutes
+      lockRenewTime: 30 * 1000, // 30 seconds
     }
   );
 
