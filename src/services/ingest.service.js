@@ -85,8 +85,10 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
 
     // Chunk (SMART)
     const chunks = chunkText(text, {
-      maxChars: 4000,
-      overlapSentences: 2,
+      maxChars: 2500,
+      overlapSentences: 1,
+      minChars: 400,
+      overlapChars: 200,
     });
 
     const totalChunks = chunks.length;
@@ -96,6 +98,9 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
     }
 
     writeLog(`Generated ${totalChunks} chunks`);
+    writeLog(`sample chunk lens: ${chunks.slice(0,5).map(c=>c.length).join(", ")}`);
+    const maxLen = Math.max(...chunks.map(c => c.length));
+    writeLog(`max chunk len: ${maxLen}`);
 
     // Batch embed + upsert
     let embedded = 0;

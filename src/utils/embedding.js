@@ -1,6 +1,9 @@
 // src/utils/embedding.js
 
 const { openai } = require("../config/openaiClient");
+const { splitByChars } = require("./chunker");
+
+const MAX_CHARS = 1800;
 
 /**
  * Generate OpenAI embeddings for an array of text inputs.
@@ -17,6 +20,10 @@ async function embedText(texts) {
   if (texts.length === 0) {
     return [];
   }
+
+  texts = texts.flatMap(t => 
+    t.length > MAX_CHARS ? splitByChars(t, MAX_CHARS, 200) : [t]
+  );
 
   const response = await openai.embeddings.create({
     model: "text-embedding-3-large",

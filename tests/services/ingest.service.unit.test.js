@@ -101,8 +101,10 @@ describe("SERVICE: trainDocument (ingestion pipeline)", () => {
     expect(chunkText).toHaveBeenCalledWith(
       "This is a simple PDF text",
       {
-        maxChars: 4000,
-        overlapSentences: 2,
+        maxChars: 2500,
+        overlapSentences: 1,
+        minChars: 400,
+        overlapChars: 200,
       }
     );
     expect(embedText).toHaveBeenCalledWith(["chunk one", "chunk two"]);
