@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { GetObjectCommand } = require("@aws-sdk/client-s3");
-const { s3Client } = require("./s3Client");
+const { s3Client } = require("../config/s3Client");
 const { logger } = require("./logger");
 
 async function downloadPdfFromS3({ bucket, key }) {
