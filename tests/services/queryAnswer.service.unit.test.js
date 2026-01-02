@@ -95,10 +95,19 @@ describe("SERVICE: getRagAnswer – Brain Router", () => {
       {
         score: 0.92,
         payload: {
-          text: "Training text",
+          text: "Training text chunk one",
           source_file: "x",
           domain: "training",
           chunk_index: 0,
+        },
+      },
+      {
+        score: 0.88,
+        payload: {
+          text: "Training text chunk two",
+          source_file: "x",
+          domain: "training",
+          chunk_index: 1,
         },
       },
     ]);

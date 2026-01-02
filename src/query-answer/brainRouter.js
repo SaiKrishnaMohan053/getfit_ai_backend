@@ -1,3 +1,4 @@
+const { tr } = require("framer-motion/client");
 const { logger } = require("../utils/logger");
 
 function isSmallTalk(query) {
@@ -31,7 +32,7 @@ function isAppQuery(query) {
 function classifyDomain(query) {
   const q = query.toLowerCase();
 
-  if ([
+  const trainingHits = [
     "exercise","workout","training","routine","bench",
     "squat","deadlift","sets","reps","strength",
     "pull","pull-up","pullup","pullups",
@@ -39,18 +40,23 @@ function classifyDomain(query) {
     "shoulder","knee","hip","back",
     "pain","pinching","form","technique","safe",
     "gym","bodyweight"
-  ].some(w => q.includes(w))) return "training";
+  ].filter(w => q.includes(w)).length;
 
-  if ([
+  const nutritionHits = [
     "protein","carbs","diet","nutrition","macros",
     "bulking","cutting","calories","food"
-  ].some(w => q.includes(w))) return "nutrition";
+  ].filter(w => q.includes(w)).length;
 
-  if ([
-    "sleep","stress","recovery","walking","steps","routine","habits","lifestyle"
-  ].some(w => q.includes(w))) return "lifestyle";
+  const lifestyleHits = [
+    "sleep","stress","recovery","walking","steps","habits","lifestyle"
+  ].filter(w => q.includes(w)).length;
 
-  return "unknown";
+  const max = Math.max(trainingHits, nutritionHits, lifestyleHits);
+
+  if (max === 0) return "unknown";
+  if (nutritionHits === max) return "nutrition";
+  if (trainingHits === max) return "training";
+  if (lifestyleHits === max) return "lifestyle";
 }
 
 function isDangerousOrMedical(query) {

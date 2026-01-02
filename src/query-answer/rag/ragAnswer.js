@@ -162,14 +162,14 @@ async function answerWithRag(query, domain) {
   .filter(r => typeof r.score === "number" && r.score >= weakThreshold)
   .slice(0, RAG_TOP_K);
 
-  if (!filteredResults.length) {
+  if (filteredResults.length < 2) {
     return {
       ok: false,
       mode: "rag",
       ragMode: "low-confidence",
       domain,
       answer: "I don’t know based on the trainer library.",
-      contextCount: results.length,
+      contextCount: filteredResults.length,
       topScore,
       sources: [],
     };
