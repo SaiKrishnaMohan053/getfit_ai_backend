@@ -15,7 +15,7 @@ const RAG_TOP_K = Number(process.env.RAG_TOP_K || "5");
 const RAG_STRICT_THRESHOLD = Number(process.env.RAG_STRICT_THRESHOLD || "0.7");
 const RAG_WEAK_THRESHOLD = Number(process.env.RAG_WEAK_THRESHOLD || "0.55");
 const WEAK_THRESHOLD_BY_DOMAIN = {
-  trainig: 0.45,
+  training: 0.45,
   nutrition: RAG_WEAK_THRESHOLD,
   lifestyle: RAG_WEAK_THRESHOLD,
 }
@@ -53,7 +53,7 @@ async function answerWithRag(query, domain) {
   try {
   // Embed query
   logger.info("Step 2:generating Embedding query");
-  const embeddingPromise = embedText([query]);
+  const embeddingPromise = embedText(query);
   const [queryVector] = await Promise.race([
     embeddingPromise,
     timeoutPromise(4000),
@@ -72,6 +72,9 @@ async function answerWithRag(query, domain) {
           vector: queryVector,
           with_payload: true,
           limit: RAG_TOP_K,
+          filter: {
+            must: [{ key: "domain", match: { value: domain } }]
+          }
         }
       );
 
@@ -124,7 +127,7 @@ async function answerWithRag(query, domain) {
   } else {
     confidence = "low";
   }
-  logger.info(`RAG confidence=${confidence} topScore=${topScore.toFixed(3)} thresholds=(weak:${RAG_WEAK_THRESHOLD}, strict:${RAG_STRICT_THRESHOLD})`);
+  logger.info(`[RAG] domain=${domain} confidence=${confidence} topScore=${topScore.toFixed(3)} thresholds=(weak:${RAG_WEAK_THRESHOLD}, strict:${RAG_STRICT_THRESHOLD})`);
 
   // Low confidence → we still refuse, same behavior as before
   if (confidence === "low") {
@@ -154,9 +157,23 @@ async function answerWithRag(query, domain) {
     return response;
   }
 
-  const filteredResults = results.filter(
-    r => typeof r.score === "number" && r.score >= weakThreshold
-  ).slice(0, RAG_TOP_K);
+  const filteredResults = results
+  .filter(r => r.payload?.domain === domain)
+  .filter(r => typeof r.score === "number" && r.score >= weakThreshold)
+  .slice(0, RAG_TOP_K);
+
+  if (!filteredResults.length) {
+    return {
+      ok: false,
+      mode: "rag",
+      ragMode: "low-confidence",
+      domain,
+      answer: "I don’t know based on the trainer library.",
+      contextCount: results.length,
+      topScore,
+      sources: [],
+    };
+  }
 
   // Build context string from top chunks
   logger.info("Step 4:building context from top chunks");
@@ -178,54 +195,18 @@ async function answerWithRag(query, domain) {
   // System prompt now depends on confidence
   let systemPrompt;
   if (confidence === "high") {
-    systemPrompt = [
-      `You are GetFitByHumanAI acting as a knowledgeable human fitness trainer.
-
-        You learned from professional training books and coaching material.
-        Treat the provided Context as your training knowledge base,
-        similar to how a certified trainer uses textbooks and experience.
-
-        Your job is to give PRACTICAL, CLEAR, HUMAN coaching guidance.
-
-        GENERAL RULES:
-        - Stay strictly aligned with the provided Context.
-        - You may rephrase, simplify, and apply principles from the Context in natural trainer language.
-        - You may infer practical cues if they are a reasonable application of the Context.
-        - Do NOT introduce concepts that are not supported by the Context.
-        - Do NOT give medical diagnoses, injury treatment, or rehabilitation protocols.
-
-        MODE RULES:
-        - If RAG_Mode is STRICT:
-          - Use ONLY the information derivable from the Context.
-          - If the Context does not support the answer, reply exactly:
-            "I don’t know based on the trainer library."
-        - If RAG_Mode is HYBRID:
-          - Use the Context as the primary source.
-          - If the Context contains assessment observations, compensations,
-            movement descriptions, or muscle behavior relevant to the question,
-            you MUST provide a synthesized answer based on them.
-          - You may translate assessment observations into practical coaching language.
-          - Never contradict the Context.
-          - ONLY reply with:
-            "I don’t know based on the trainer library."
-            if the Context is completely unrelated to the question.
-
-        ANSWER STYLE (MANDATORY):
-        - Sound like a calm, experienced gym trainer.
-        - Be direct and practical. No AI tone. No motivational fluff.
-        - Prefer short paragraphs and bullet points.
-        - Use cues, sets, reps, ranges, and form checkpoints when relevant.
-        - Clearly mention when to STOP or REGRESS if pain or instability appears.
-
-        ANSWER STRUCTURE (FOLLOW THIS ORDER):
-        1. Direct answer (1–2 sentences)
-        2. How to do it / what to focus on (bullets or steps)
-        3. Common mistakes or warning signs (if applicable)
-        4. Simple progression or regression (if applicable)
-
-        SAFETY:
-        - If pain is mentioned, differentiate normal muscle effort vs warning pain.
-        - Never suggest pushing through sharp, joint, or nerve pain.`,
+    systemPrompt = [`
+      You are a certified fitness coach.
+      Rules:
+      - Use ONLY the provided Context.
+      - If Context is insufficient, reply exactly: "I don’t know based on the trainer library."
+      - No medical diagnosis or rehab protocols.
+      - Be concise, practical, and structured.
+      Format:
+      1) Direct answer (1-2 lines)
+      2) Steps/cues (bullets)
+      3) Mistakes/warnings (bullets)
+      `,
     ].join(" ");
   } else {
     systemPrompt = [

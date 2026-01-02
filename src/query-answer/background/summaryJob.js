@@ -1,9 +1,9 @@
-const { aiQueue } = require("../../config/aiQueue");
+const { queueAI } = require("../../config/queue");
 
 async function enqueueSummaryJob(answer) {
-  if (!aiQueue) return;
+  if (!queueAI) return;
 
-  await aiQueue.add("openai-background", {
+  await queueAI.add("openai-background", {
     payload: {
       messages: [
         { role: "system", content: "Create one-line summaries." },
