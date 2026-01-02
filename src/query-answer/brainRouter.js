@@ -1,4 +1,3 @@
-const { tr } = require("framer-motion/client");
 const { logger } = require("../utils/logger");
 
 function isSmallTalk(query) {
