@@ -12,13 +12,19 @@ const {
 const { logger } = require("../../utils/logger");
 
 const RAG_TOP_K = Number(process.env.RAG_TOP_K || "5");
-const RAG_STRICT_THRESHOLD = Number(process.env.RAG_STRICT_THRESHOLD || "0.7");
+const RAG_STRICT_THRESHOLD = Number(process.env.RAG_STRICT_THRESHOLD || "0.6");
 const RAG_WEAK_THRESHOLD = Number(process.env.RAG_WEAK_THRESHOLD || "0.55");
+const STRICT_THRESHOLD_BY_DOMAIN = {
+  training: 0.6,
+  nutrition: 0.62,
+  lifestyle: 0.6,
+}
 const WEAK_THRESHOLD_BY_DOMAIN = {
   training: 0.45,
-  nutrition: RAG_WEAK_THRESHOLD,
-  lifestyle: RAG_WEAK_THRESHOLD,
+  nutrition: 0.5,
+  lifestyle: 0.5,
 }
+
 function timeoutPromise(ms) {
   return new Promise((_, reject) =>
     setTimeout(() => reject(new Error(`TIMEOUT_${ms}`)), ms)
@@ -53,11 +59,10 @@ async function answerWithRag(query, domain) {
   try {
   // Embed query
   logger.info("Step 2:generating Embedding query");
-  const embeddingPromise = embedText(query);
-  const [queryVector] = await Promise.race([
-    embeddingPromise,
-    timeoutPromise(4000),
-  ]);
+  const embeddingPromise = embedText([query]);
+  const vectors = await Promise.race([embeddingPromise, timeoutPromise(4000)]);
+  const queryVector = vectors?.[0];
+  if (!queryVector) throw new Error("EMBEDDING_EMPTY");
   logger.info("Step 2 done: Embedding generated");
 
   // Search Qdrant with payload
@@ -116,18 +121,22 @@ async function answerWithRag(query, domain) {
   }
 
   const topScore = typeof results[0].score === "number" ? results[0].score : 0;
+  const strictThreshold = STRICT_THRESHOLD_BY_DOMAIN[domain] ?? RAG_STRICT_THRESHOLD;
   const weakThreshold = WEAK_THRESHOLD_BY_DOMAIN[domain] ?? RAG_WEAK_THRESHOLD;
 
   // Decide confidence band for hybrid RAG
   let confidence;
-  if (topScore >= RAG_STRICT_THRESHOLD) {
+  if (topScore >= strictThreshold) {
     confidence = "high"; 
   } else if (topScore >= weakThreshold) {
     confidence = "medium"; 
   } else {
     confidence = "low";
   }
-  logger.info(`[RAG] domain=${domain} confidence=${confidence} topScore=${topScore.toFixed(3)} thresholds=(weak:${RAG_WEAK_THRESHOLD}, strict:${RAG_STRICT_THRESHOLD})`);
+  
+  logger.info(
+    `[RAG] domain=${domain} confidence=${confidence} topScore=${topScore.toFixed(3)} thresholds=(weak:${weakThreshold}, strict:${strictThreshold})`
+  );
 
   // Low confidence → we still refuse, same behavior as before
   if (confidence === "low") {

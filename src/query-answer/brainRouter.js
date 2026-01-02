@@ -56,13 +56,16 @@ function classifyDomain(query) {
   if (nutritionHits === max) return "nutrition";
   if (trainingHits === max) return "training";
   if (lifestyleHits === max) return "lifestyle";
+  return "training";
 }
 
 function isDangerousOrMedical(query) {
   const q = query.toLowerCase();
   return [
     "suicide","kill myself","self harm","overdose",
-    "stop medication","replace my doctor"
+    "stop medication","replace my doctor","acl","tear","injury","surgery","hernia",
+    "disc","slip disc","ligament","meniscus",
+    "rehab","physio","diagnosis"
   ].some(k => q.includes(k));
 }
 
