@@ -36,10 +36,6 @@
 
         { "name": "QDRANT_COLLECTION", "value": "ecs_test" },
 
-        { "name": "REDIS_HOST", "value": "10.0.11.246" },
-        { "name": "REDIS_PORT", "value": "6379" },
-        { "name": "REDIS_TLS", "value": "false" },
-
         { "name": "AWS_REGION", "value": "us-east-1" },
         { "name": "AWS_TRAINING_BUCKET", "value": "getfit-ai-training-pdfs" },
 
@@ -56,8 +52,12 @@
           "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi:QDRANT_URL::"
         },
         {
-          "name": "REDIS_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi:REDIS_URL::"
+          "name": "REDIS_HOST",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi:REDIS_HOST::"
+        },
+        {
+          "name": "REDIS_PORT",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi:REDIS_PORT::"
         },
         {
           "name": "REDIS_PASSWORD",
