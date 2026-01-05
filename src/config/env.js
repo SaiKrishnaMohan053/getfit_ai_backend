@@ -12,10 +12,11 @@ const isTest = process.env.NODE_ENV === "test";
  */
 const config = {
   // Redis
-  REDIS_URL: process.env.REDIS_URL ||  "master.getfit-redis.hjxkti.use1.cache.amazonaws.com:6379",
-  REDIS_HOST: process.env.REDIS_HOST || "master.getfit-redis.hjxkti.use1.cache.amazonaws.com",
+  REDIS_URL: process.env.REDIS_URL ||  "10.0.10.150:6379",
+  REDIS_HOST: process.env.REDIS_HOST || "10.0.10.150",
   REDIS_PORT: Number(process.env.REDIS_PORT || 6379),
-  REDIS_TLS: process.env.REDIS_TLS || "true",
+  REDIS_PASSWORD: process.env.REDIS_PASSWORD,
+  REDIS_TLS: process.env.REDIS_TLS === "true",
 
   // App environment
   NODE_ENV: process.env.NODE_ENV || "development",

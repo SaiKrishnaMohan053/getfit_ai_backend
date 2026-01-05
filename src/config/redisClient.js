@@ -15,7 +15,8 @@ const {
 const redisClient = new Redis({
   host: config.REDIS_HOST,
   port: config.REDIS_PORT || 6379,
-  tls: config.REDIS_TLS ? {} : undefined,
+  password: config.REDIS_PASSWORD,
+  ...(config.REDIS_TLS ? { tls: {} } : {}),
   connectTimeout: 2000,
   maxRetriesPerRequest: 1,
   enableReadyCheck: false,

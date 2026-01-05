@@ -9,7 +9,8 @@ let queueAI = null;
 const connection = {
   host: config.REDIS_HOST,
   port: config.REDIS_PORT || 6379,
-  tls: config.REDIS_TLS === "true" ? {} : undefined,
+  password: config.REDIS_PASSWORD,
+  ...(config.REDIS_TLS === "true" ? { tls: {} } : {}),
   connectTimeout: 5000,
   maxRetriesPerRequest: null,
   enableReadyCheck: false,

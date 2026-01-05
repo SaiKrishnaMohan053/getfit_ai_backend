@@ -22,7 +22,7 @@ async function get(key) {
       CACHE_TIMEOUT_MS
     );
   } catch (err) {
-    if (err.message === "CACHE_TIMEOUT") {
+    if (err.message.startsWith("TIMEOUT_")) {
       logger.warn("queryCache.get timed out, skipping cache");
     } else {
       logger.error("queryCache.get error: " + err.message);
