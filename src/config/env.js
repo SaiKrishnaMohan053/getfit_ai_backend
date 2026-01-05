@@ -12,8 +12,8 @@ const isTest = process.env.NODE_ENV === "test";
  */
 const config = {
   // Redis
-  REDIS_URL: process.env.REDIS_URL ||  "10.0.10.150:6379",
-  REDIS_HOST: process.env.REDIS_HOST || "10.0.10.150",
+  REDIS_URL: process.env.REDIS_URL ||  "10.0.11.246:6379",
+  REDIS_HOST: process.env.REDIS_HOST || "10.0.11.246",
   REDIS_PORT: Number(process.env.REDIS_PORT || 6379),
   REDIS_PASSWORD: process.env.REDIS_PASSWORD,
   REDIS_TLS: process.env.REDIS_TLS === "true",
