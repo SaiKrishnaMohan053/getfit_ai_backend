@@ -10,6 +10,7 @@ const {
   qdrantLatency,
 } = require("../../config/prometheusMetrics");
 const { logger } = require("../../utils/logger");
+const { pushRawAnswer } = require("../../memory/rawRagMemory");
 
 /**
  * ------------------------
@@ -256,12 +257,25 @@ async function answerWithRag(query, domain) {
     cachedAt: new Date().toISOString(),
   };
 
+  try {
+    const count = await pushRawAnswer(domain, answer);
+
+    logger.info(`[MEMORY] raw RAG stored | domain=${domain} | count=${count}`)
+
+    if(count === 10) {
+      logger.info(`[MEMORY] raw RAG reached 10 entries, consider summarization for domain=${domain}`);
+
+    }
+  } catch (err) {
+    logger.error(`[MEMORY] failed to store raw RAG answer: ${err.message}`);
+  }
+
   // Cache successful RAG answer
   if (response.ok && response.mode === "rag") {
    await queryCache.set(cacheKey, response); 
   }
 
-  enqueueSummaryJob(answer).catch(() => {});
+  enqueueSummaryJob({answer, domain, topScore}).catch(() => {});
 
   return response;
   } catch (err) {

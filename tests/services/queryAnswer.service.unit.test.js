@@ -159,7 +159,7 @@ describe("SERVICE: enqueueSummaryJob", () => {
     await enqueueSummaryJob("some answer");
 
     expect(queueAI.add).toHaveBeenCalledWith(
-      "openai-background",
+      "ai-tasks",
       expect.objectContaining({
         payload: expect.any(Object),
       })

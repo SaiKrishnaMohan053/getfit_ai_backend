@@ -1,15 +1,11 @@
 const { queueAI } = require("../../config/queue");
 
-async function enqueueSummaryJob(answer) {
+async function enqueueSummaryJob({answer, domain, topScore}) {
   if (!queueAI) return;
 
-  await queueAI.add("openai-background", {
-    payload: {
-      messages: [
-        { role: "system", content: "Create one-line summaries." },
-        { role: "user", content: answer },
-      ],
-    },
+  await queueAI.add("ai-tasks", {
+    taskType: "answer-summary",
+    payload: { answer, domain, score: topScore },
   });
 }
 

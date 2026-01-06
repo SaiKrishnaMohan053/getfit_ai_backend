@@ -38,6 +38,10 @@ async function processor(job) {
       }
     }
 
+    if (taskType === "answer-summary") {
+      
+    }
+
     throw new Error(`Unknown task type: ${taskType}`);
   } finally {
     metrics.bullActive.dec();
