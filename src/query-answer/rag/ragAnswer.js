@@ -11,13 +11,17 @@ const {
 } = require("../../config/prometheusMetrics");
 const { logger } = require("../../utils/logger");
 
+/**
+ * ------------------------
+ * RAG Configuration
+ * ------------------------
+ */
 const RAG_TOP_K = Number(process.env.RAG_TOP_K || "5");
-const RAG_STRICT_THRESHOLD = Number(process.env.RAG_STRICT_THRESHOLD || "0.6");
-const RAG_WEAK_THRESHOLD = Number(process.env.RAG_WEAK_THRESHOLD || "0.55");
+
 const STRICT_THRESHOLD_BY_DOMAIN = {
-  training: 0.6,
-  nutrition: 0.62,
-  lifestyle: 0.6,
+  training: 0.7,
+  nutrition: 0.75,
+  lifestyle: 0.7,
 }
 const WEAK_THRESHOLD_BY_DOMAIN = {
   training: 0.45,
@@ -25,48 +29,50 @@ const WEAK_THRESHOLD_BY_DOMAIN = {
   lifestyle: 0.5,
 }
 
+// Promise timeout wrapper
 function timeoutPromise(ms) {
   return new Promise((_, reject) =>
     setTimeout(() => reject(new Error(`TIMEOUT_${ms}`)), ms)
   );
 }
 
+/**
+ * ------------------------
+ * Main RAG Answer Function
+ * ------------------------
+ */
 async function answerWithRag(query, domain) {
   const start = Date.now();
-  logger.info(`[QDRANT] RAG invoked for domain=${domain}, query="${query}"`);
+  logger.info(`[RAG] invoked for domain=${domain}, query="${query}"`);
 
   // Cache check (Redis via queryCache helper)
-  logger.info("Step 1:Checking RAG cache");
+  logger.info("[RAG] Step 1:Checking RAG cache");
   const cacheKey = `${domain}:${normalizeCacheKey(query)}`;
-  let cached = null;
   try {
-    cached = await queryCache.get(cacheKey);
+    const cached = await queryCache.get(cacheKey);
+    if (cached) {
+      logger.info("[RAG] Cache hit");
+      enqueueSummaryJob(cached.answer).catch(() => {});
+      return {
+        ...cached,
+        servedFrom: "cache",
+        cachedAt: cached.cachedAt || "unknown",
+      };
+    }
   } catch (err) {
-    logger.error("queryCache.get error: " + err.message);
-  }
-  if (cached) {
-    logger.info("RAG cache hit");
-
-    enqueueSummaryJob(cached.answer).catch(()=>{});
-
-    return { 
-      ...cached, 
-      servedFrom: "cache",
-      cachedAt: cached.cachedAt || "unknown",
-    };
+    logger.error("[RAG] Cache read error:", err.message);
   }
 
   try {
   // Embed query
-  logger.info("Step 2:generating Embedding query");
-  const embeddingPromise = embedText([query]);
-  const vectors = await Promise.race([embeddingPromise, timeoutPromise(4000)]);
+  logger.info("[RAG] Step 2:generating Embedding query");
+  const vectors = await Promise.race([embedText([query]), timeoutPromise(4000)]);
   const queryVector = vectors?.[0];
   if (!queryVector) throw new Error("EMBEDDING_EMPTY");
-  logger.info("Step 2 done: Embedding generated");
+  logger.info("[RAG] Step 2 done: Embedding generated");
 
   // Search Qdrant with payload
-  logger.info("Step 3:searching Qdrant vector DB");
+  logger.info("[RAG] Step 3:searching Qdrant vector DB");
   const qdrantStart = process.hrtime();
 
   const searchPromise = (async () => {
@@ -121,67 +127,37 @@ async function answerWithRag(query, domain) {
   }
 
   const topScore = typeof results[0].score === "number" ? results[0].score : 0;
-  const strictThreshold = STRICT_THRESHOLD_BY_DOMAIN[domain] ?? RAG_STRICT_THRESHOLD;
-  const weakThreshold = WEAK_THRESHOLD_BY_DOMAIN[domain] ?? RAG_WEAK_THRESHOLD;
+  const strictThreshold = STRICT_THRESHOLD_BY_DOMAIN[domain];
+  const weakThreshold = WEAK_THRESHOLD_BY_DOMAIN[domain];
 
-  // Decide confidence band for hybrid RAG
-  let confidence;
-  if (topScore >= strictThreshold) {
-    confidence = "high"; 
-  } else if (topScore >= weakThreshold) {
-    confidence = "medium"; 
-  } else {
-    confidence = "low";
-  }
-  
-  logger.info(
-    `[RAG] domain=${domain} confidence=${confidence} topScore=${topScore.toFixed(3)} thresholds=(weak:${weakThreshold}, strict:${strictThreshold})`
-  );
+  logger.info(`[RAG] Score=${topScore.toFixed(3)} | strict=${strictThreshold} | weak=${weakThreshold}`);
 
-  // Low confidence → we still refuse, same behavior as before
-  if (confidence === "low") {
-    logger.warn(
-      `RAG top score below weak threshold (${topScore.toFixed(
-        3
-      )} < ${weakThreshold})`
-    );
-
-    const response = {
-      ok: false,
-      mode: "rag",
-      ragMode: "low-confidence",
+  if (topScore < strictThreshold) {
+    const response = refuse(
       domain,
-      answer:
-        "The trainer library doesn’t cover this scenario clearly enough to give a safe answer yet.",
-      contextCount: results.length,
+      REFUSAL_MESSAGE,
+      results,
       topScore,
-      sources: results.map((r) => ({
-        score: r.score,
-        source_file: r.payload?.source_file,
-        domain: r.payload?.domain,
-        chunk_index: r.payload?.chunk_index,
-      })),
-    };
+    );
     await queryCache.set(cacheKey, response);
     return response;
   }
+  
+  logger.info(
+    `[RAG] domain=${domain} topScore=${topScore.toFixed(3)} thresholds=(weak:${weakThreshold}, strict:${strictThreshold})`
+  );
 
   const filteredResults = results
-  .filter(r => r.payload?.domain === domain)
-  .filter(r => typeof r.score === "number" && r.score >= weakThreshold)
-  .slice(0, RAG_TOP_K);
+      .filter(
+        (r) =>
+          r.payload?.domain === domain &&
+          typeof r.score === "number" &&
+          r.score >= weakThreshold
+      )
+      .slice(0, RAG_TOP_K);
 
   if (filteredResults.length < 2) {
-    return {
-      ok: false,
-      mode: "rag",
-      ragMode: "low-confidence",
-      domain,
-      answer: "I don’t know based on the trainer library.",
-      contextCount: filteredResults.length,
-      topScore,
-      sources: [],
-    };
+    return refuse(domain, REFUSAL_MESSAGE);
   }
 
   // Build context string from top chunks
@@ -202,9 +178,7 @@ async function answerWithRag(query, domain) {
   }
 
   // System prompt now depends on confidence
-  let systemPrompt;
-  if (confidence === "high") {
-    systemPrompt = [`
+  const systemPrompt = `
       You are a certified fitness coach.
       Rules:
       - Use ONLY the provided Context.
@@ -215,30 +189,17 @@ async function answerWithRag(query, domain) {
       1) Direct answer (1-2 lines)
       2) Steps/cues (bullets)
       3) Mistakes/warnings (bullets)
-      `,
-    ].join(" ");
-  } else {
-    systemPrompt = [
-      "You are GetFitByHumanAI, an expert assistant for training, nutrition, and lifestyle.",
-      "Use the provided Context as your primary source of truth.",
-      "You may use your general fitness knowledge ONLY to fill small gaps or to rephrase more clearly,",
-      "but you must not contradict the Context and you must stay aligned with it.",
-      "If key information is missing from the Context, reply exactly with: `I don’t know based on the trainer library.`",
-      "Avoid medical diagnoses, drug advice, or unsafe recommendations.",
-    ].join(" ");
-  }
+      `;
 
-  const userPrompt = [
-    `Domain: ${domain}`,
-    `Confidence: ${confidence}`,
-    `RAG_Mode: ${confidence === "high" ? "STRICT" : "HYBRID"}`,
-    `TopScore: ${topScore.toFixed(3)}`,
-    "",
-    "Context:",
-    context,
-    "",
-    `Question: ${query}`,
-  ].join("\n");
+    const userPrompt = `
+    Domain: ${domain}
+    TopScore: ${topScore.toFixed(3)}
+
+    Context: 
+    ${context}
+    
+    Question: 
+    ${query}`;
 
   // Call OpenAI with metrics (latency tracked inside client)
   logger.info("Step 5:calling OpenAI chat for final answer");
@@ -248,7 +209,7 @@ async function answerWithRag(query, domain) {
     completion = await Promise.race([
       safeChatCompletion({
         model: "gpt-4o-mini",
-        temperature: 0.35,
+        temperature: 0.3,
         max_tokens: Number(process.env.RAG_MAX_TOKENS || "350"),
         messages: [
           { role: "system", content: systemPrompt },
@@ -281,7 +242,7 @@ async function answerWithRag(query, domain) {
   const response = {
     ok: true,
     mode: "rag",
-    ragMode: confidence === "high" ? "strict" : "hybrid",
+    ragMode: "strict",
     domain,
     answer,
     contextCount: filteredResults.length,
@@ -304,8 +265,8 @@ async function answerWithRag(query, domain) {
 
   return response;
   } catch (err) {
-    logger.error(`RAG failed after ${Date.now() - start}ms: ${err.message}`);
-    logger.error(`RAG processing failed: ${err.message}`);
+    logger.error(`[RAG] failed after ${Date.now() - start}ms: ${err.message}`);
+    logger.error(`[RAG] processing failed: ${err.message}`);
     return {
       ok: false,
       mode: "rag-error",
@@ -314,6 +275,27 @@ async function answerWithRag(query, domain) {
       contextCount: 0,
       sources: [],
     }
+  }
+}
+
+const REFUSAL_MESSAGE = "I don’t know based on the trainer library.";
+
+function refuse(domain, message, results = [], topScore = 0) {
+  logger.info(`[RAG] refusing to answer for domain=${domain}: ${message}`);
+  return {
+    ok: false,
+    mode: "rag",
+    ragMode: "low-confidence",
+    domain,
+    answer: message,
+    contextCount: results.length,
+    topScore,
+    sources: results.map((r) => ({
+      score: r.score,
+      source_file: r.payload?.source_file,
+      domain: r.payload?.domain,
+      chunk_index: r.payload?.chunk_index,
+    })),
   }
 }
 

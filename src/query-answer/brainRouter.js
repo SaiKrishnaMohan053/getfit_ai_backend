@@ -72,8 +72,8 @@ function isDangerousOrMedical(query) {
 function routeQuery(query) {
   logger.info(`[ROUTER] smallTalk=${isSmallTalk(query)}, app=${isAppQuery(query)}, domain=${classifyDomain(query)}, query="${query}"`);
   if (isDangerousOrMedical(query)) return { type: "blocked" };
-  if (isAppQuery(query)) return { type: "app" };
   if (isSmallTalk(query)) return { type: "smallTalk" };
+  if (isAppQuery(query)) return { type: "app" };
 
   const domain = classifyDomain(query);
   if (domain === "unknown") {
@@ -81,7 +81,6 @@ function routeQuery(query) {
     return { type: "unsupported" };
   }
 
-  logger.info(`[ROUTER] domain=${domain}, query="${query}"`);
   return { type: "domainQuestion", domain };
 }
 
