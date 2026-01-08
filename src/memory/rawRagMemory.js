@@ -1,4 +1,4 @@
-const redis = require("../config/redisClient");
+const { redisClient } = require("../config/redisClient");
 
 function getRawKey(domain) {
   return `rag:raw:${domain}`;
@@ -14,23 +14,23 @@ async function pushRawAnswer(domain, answer) {
   });
 
   // Push newest at the end
-  await redis.rpush(key, payload);
+  await redisClient.rpush(key, payload);
 
   // Get current count
-  const count = await redis.llen(key);
+  const count = await redisClient.llen(key);
 
   return count;
 }
 
 async function getAllRawAnswers(domain) {
   const key = getRawKey(domain);
-  const items = await redis.lrange(key, 0, -1);
+  const items = await redisClient.lrange(key, 0, -1);
   return items.map(JSON.parse);
 }
 
 async function clearRawAnswers(domain) {
   const key = getRawKey(domain);
-  await redis.del(key);
+  await redisClient.del(key);
 }
 
 module.exports = {
