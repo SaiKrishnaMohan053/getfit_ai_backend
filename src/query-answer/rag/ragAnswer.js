@@ -21,7 +21,7 @@ const QDRANT_FETCH_K = 15;
 const FINAL_CONTEXT_K = 5;
 
 const STRICT_THRESHOLD_BY_DOMAIN = {
-  training: 0.7,
+  training: 0.6,
   nutrition: 0.75,
   lifestyle: 0.7,
 }
