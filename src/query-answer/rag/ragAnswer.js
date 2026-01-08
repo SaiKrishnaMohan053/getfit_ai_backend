@@ -136,7 +136,8 @@ async function answerWithRag(query, domain) {
 
   logger.info(`[RAG] Score=${topScore.toFixed(3)} | strict=${strictThreshold} | weak=${weakThreshold}`);
 
-  if (topScore < strictThreshold) {
+  const strongChunks = results.filter(r => r.score >= weakThreshold);
+  if (topScore < strictThreshold && strongChunks.length < 4) {
     const response = refuse(
       domain,
       REFUSAL_MESSAGE,
