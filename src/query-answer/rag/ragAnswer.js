@@ -136,8 +136,7 @@ async function answerWithRag(query, domain) {
 
   logger.info(`[RAG] Score=${topScore.toFixed(3)} | strict=${strictThreshold} | weak=${weakThreshold}`);
 
-  const strongChunks = results.filter(r => r.score >= weakThreshold);
-  if (topScore < strictThreshold && strongChunks.length < 4) {
+  if (topScore < strictThreshold) {
     const response = refuse(
       domain,
       REFUSAL_MESSAGE,
@@ -245,6 +244,15 @@ async function answerWithRag(query, domain) {
 
   const answer = completion.choices?.[0]?.message?.content || "The AI engine couldn’t generate a response right now. Please try again.";
 
+  // Guard: LLM refused despite passing strict checks
+  if (answer.trim() === REFUSAL_MESSAGE) {
+    logger.warn(
+      `[RAG] LLM returned refusal after strict pass | domain=${domain} | score=${topScore.toFixed(3)}`
+    );
+
+    return refuse(domain, REFUSAL_MESSAGE, filteredResults, topScore);
+  }
+
   const response = {
     ok: true,
     mode: "rag",
@@ -262,17 +270,21 @@ async function answerWithRag(query, domain) {
     cachedAt: new Date().toISOString(),
   };
 
-  try {
-    const count = await pushRawAnswer(domain, answer);
+  if (response.ok && response.mode === "rag" && response.ragMode === "strict") {
+    try {
+      const count = await pushRawAnswer(domain, answer);
 
-    logger.info(`[MEMORY] raw RAG stored | domain=${domain} | count=${count}`)
+      logger.info(`[MEMORY] raw RAG stored | domain=${domain} | count=${count}`)
 
-    if(count === 10) {
-      logger.info(`[MEMORY] raw RAG reached 10 entries, consider summarization for domain=${domain}`);
+      if(count === 10) {
+        logger.info(`[MEMORY] raw RAG reached 10 entries, consider summarization for domain=${domain}`);
 
+      }
+    } catch (err) {
+      logger.error(`[MEMORY] failed to store raw RAG answer: ${err.message}`);
     }
-  } catch (err) {
-    logger.error(`[MEMORY] failed to store raw RAG answer: ${err.message}`);
+  } else {
+    logger.info(`[MEMORY] raw RAG not stored | ok=${response.ok} | ragMode=${response.ragMode}`)
   }
 
   // Cache successful RAG answer
