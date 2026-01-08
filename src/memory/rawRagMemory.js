@@ -15,6 +15,7 @@ async function pushRawAnswer(domain, answer) {
 
   // Push newest at the end
   await redisClient.rpush(key, payload);
+  await redisClient.ltrim(key, -10, -1);
 
   // Get current count
   const count = await redisClient.llen(key);

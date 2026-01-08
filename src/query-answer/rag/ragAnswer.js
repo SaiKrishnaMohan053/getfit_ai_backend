@@ -17,7 +17,8 @@ const { pushRawAnswer } = require("../../memory/rawRagMemory");
  * RAG Configuration
  * ------------------------
  */
-const RAG_TOP_K = Number(process.env.RAG_TOP_K || "5");
+const QDRANT_FETCH_K = 15;
+const FINAL_CONTEXT_K = 5;
 
 const STRICT_THRESHOLD_BY_DOMAIN = {
   training: 0.7,
@@ -83,7 +84,7 @@ async function answerWithRag(query, domain) {
         {
           vector: queryVector,
           with_payload: true,
-          limit: RAG_TOP_K,
+          limit: QDRANT_FETCH_K,
           filter: {
             must: [{ key: "domain", match: { value: domain } }]
           }
@@ -127,6 +128,8 @@ async function answerWithRag(query, domain) {
     return response;
   }
 
+  results.sort((a, b) => b.score - a.score);
+
   const topScore = typeof results[0].score === "number" ? results[0].score : 0;
   const strictThreshold = STRICT_THRESHOLD_BY_DOMAIN[domain];
   const weakThreshold = WEAK_THRESHOLD_BY_DOMAIN[domain];
@@ -155,7 +158,8 @@ async function answerWithRag(query, domain) {
           typeof r.score === "number" &&
           r.score >= weakThreshold
       )
-      .slice(0, RAG_TOP_K);
+      .sort((a, b) => b.score - a.score)
+      .slice(0, FINAL_CONTEXT_K);
 
   if (filteredResults.length < 2) {
     return refuse(domain, REFUSAL_MESSAGE);
@@ -275,7 +279,7 @@ async function answerWithRag(query, domain) {
    await queryCache.set(cacheKey, response); 
   }
 
-  enqueueSummaryJob({answer, domain, topScore}).catch(() => {});
+  enqueueSummaryJob(answer, domain, topScore).catch(() => {});
 
   return response;
   } catch (err) {
