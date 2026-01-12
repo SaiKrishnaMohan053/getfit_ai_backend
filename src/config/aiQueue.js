@@ -71,19 +71,93 @@ async function processor(job) {
         }
 
         // 3. Store summary in Qdrant
-        await createSmallSummaryVector({
-          domain,
-          summaryText,
-        });
-
-        // 4. Clear Redis raw buffer
-        await clearRawAnswers(domain);
+        let stored = false;
+        try {
+          await createSmallSummaryVector({
+            domain,
+            summaryText,
+          });
+          stored = true;
+        } finally {
+          if (stored) {
+            await clearRawAnswers(domain);
+          }
+        }
 
         logger.info(`[SUMMARY] small summary created for domain=${domain}`);
+
+        const { countSmallSummaries } = require("../memory/smallSummaryStore");
+        const { queueAI } = require("../config/queue");
+
+        const count = await countSmallSummaries(domain);
+
+        if (count >= 3) {
+          await queueAI.add("ai-tasks", {
+            taskType: "meta-summary",
+            payload: { domain }
+          });
+
+          logger.info(`[META] meta-summary job enqueued | domain=${domain}`);
+        }
       } finally {
         await releaseSummLock(domain).catch(() => {});
       }
 
+      return { ok: true };
+    }
+
+    if (taskType === "meta-summary") {
+      const { domain } = payload;
+
+      const { tryAcquireMetaLock, releaseMetaLock } =
+        require("../memory/metaSummaryLock");
+
+      const locked = await tryAcquireMetaLock(domain);
+      if (!locked) {
+        logger.info(`[META] meta-summary already running | domain=${domain}`);
+        return { skipped: true };
+      }
+
+      try {
+        const { getRecentSmallSummaries } = require("../memory/smallSummaryStore");
+        const { createMetaSummary } = require("../services/summary.service");
+        const { createMetaSummaryVector } = require("../memory/summaryVectorStore");
+
+        const smallSummaries = await getRecentSmallSummaries(domain, 3);
+
+        if (smallSummaries.length < 3) {
+          logger.info(`[META] not enough small summaries`);
+          return { skipped: true };
+        }
+
+        const metaText = await createMetaSummary({
+          domain,
+          smallSummaries
+        });
+        const { deleteSmallSummariesByIds } = require("../memory/summaryVectorStore");
+
+        const ids = smallSummaries.map(s => s.id);
+
+        let metaStored = false;
+        try {
+          await createMetaSummaryVector({
+            domain,
+            summaryText: metaText,
+            covers: ids.length,
+            sourceIds: ids,
+          });
+          metaStored = true;
+        } finally {
+          if (metaStored) {
+            await deleteSmallSummariesByIds(ids);
+            logger.info(`[META] deleted ${ids.length} small summaries after meta-summary`);
+          }
+        }
+
+        logger.info(`[META] meta summary created for domain=${domain}`);
+      } finally {
+        await releaseMetaLock(domain).catch(() => {});
+      }
       return { ok: true };
     }
 
