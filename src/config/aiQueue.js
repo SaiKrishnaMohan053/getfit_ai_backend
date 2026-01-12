@@ -49,7 +49,7 @@ async function processor(job) {
         } = require("../memory/rawRagMemory");
 
         const { createSmallSummary } = require("../services/summary.service");
-        const { createSmallSummaryVector } = require("../memory/summaryVectoreStore");
+        const { createSmallSummaryVector } = require("../memory/summaryVectorStore");
 
         // 1. Pull raw answers from Redis
         const rawItems = await getAllRawAnswers(domain);
