@@ -3,6 +3,7 @@ const { Worker, QueueEvents } = require("bullmq");
 const { connection } = require("../config/queue");
 const { logger } = require("../utils/logger");
 const metrics = require("./prometheusMetrics");
+const { releaseSummLock } = require("../memory/rawRagMemory");
 
 const isUnitTest = process.env.IS_UNIT_TEST === "1";
 const isE2eTest = process.env.E2E_TEST === "1";
@@ -38,8 +39,52 @@ async function processor(job) {
       }
     }
 
-    if (taskType === "answer-summary") {
-      
+    if (taskType === "small-summary") {
+      const { domain } = payload;
+
+      try {
+        const {
+          getAllRawAnswers,
+          clearRawAnswers,
+        } = require("../memory/rawRagMemory");
+
+        const { createSmallSummary } = require("../services/summary.service");
+        const { createSmallSummaryVector } = require("../memory/summaryVectorStore");
+
+        // 1. Pull raw answers from Redis
+        const rawItems = await getAllRawAnswers(domain);
+
+        if (!rawItems || rawItems.length < 10) {
+          logger.warn(`[SUMMARY] Not enough raw answers for domain=${domain}`);
+          return { skipped: true };
+        }
+
+        // 2. Generate small summary
+        const summaryText = await createSmallSummary({
+          domain,
+          rawItems,
+        });
+
+        if (!summaryText || summaryText.trim().length < 20) {
+          logger.warn(`[SUMMARY] empty summary generated for domain=${domain}`);
+          return { skipped: true };
+        }
+
+        // 3. Store summary in Qdrant
+        await createSmallSummaryVector({
+          domain,
+          summaryText,
+        });
+
+        // 4. Clear Redis raw buffer
+        await clearRawAnswers(domain);
+
+        logger.info(`[SUMMARY] small summary created for domain=${domain}`);
+      } finally {
+        await releaseSummLock(domain).catch(() => {});
+      }
+
+      return { ok: true };
     }
 
     throw new Error(`Unknown task type: ${taskType}`);

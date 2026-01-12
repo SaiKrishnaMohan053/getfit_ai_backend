@@ -1,11 +1,11 @@
 const { queueAI } = require("../../config/queue");
 
-async function enqueueSummaryJob({answer, domain, topScore}) {
+async function enqueueSummaryJob({ type, domain }) {
   if (!queueAI) return;
 
   await queueAI.add("ai-tasks", {
-    taskType: "answer-summary",
-    payload: { answer, domain, score: topScore },
+    taskType: type,
+    payload: { domain },
   });
 }
 

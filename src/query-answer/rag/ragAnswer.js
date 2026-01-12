@@ -11,6 +11,7 @@ const {
 } = require("../../config/prometheusMetrics");
 const { logger } = require("../../utils/logger");
 const { pushRawAnswer } = require("../../memory/rawRagMemory");
+const { tryAcquireSummLock } = require("../../memory/rawRagMemory");
 
 /**
  * ------------------------
@@ -54,7 +55,6 @@ async function answerWithRag(query, domain) {
     const cached = await queryCache.get(cacheKey);
     if (cached) {
       logger.info("[RAG] Cache hit");
-      enqueueSummaryJob(cached.answer).catch(() => {});
       return {
         ...cached,
         servedFrom: "cache",
@@ -143,7 +143,6 @@ async function answerWithRag(query, domain) {
       results,
       topScore,
     );
-    await queryCache.set(cacheKey, response);
     return response;
   }
   
@@ -163,6 +162,15 @@ async function answerWithRag(query, domain) {
 
   if (filteredResults.length < 2) {
     return refuse(domain, REFUSAL_MESSAGE);
+  }
+
+  const strongChunkCount = filteredResults.filter(
+    r => r.score >= strictThreshold
+  ).length;
+
+  if (strongChunkCount === 0) {
+    logger.warn(`[RAG] No strong chunks despite strict pass | domain=${domain} | score=${topScore}`);
+    return refuse(domain, REFUSAL_MESSAGE, filteredResults, topScore);
   }
 
   // Build context string from top chunks
@@ -276,9 +284,13 @@ async function answerWithRag(query, domain) {
 
       logger.info(`[MEMORY] raw RAG stored | domain=${domain} | count=${count}`)
 
-      if(count === 10) {
-        logger.info(`[MEMORY] raw RAG reached 10 entries, consider summarization for domain=${domain}`);
-
+      if (count === 10) {
+        const locked = await tryAcquireSummLock(domain);
+        if (locked) {
+          await enqueueSummaryJob({ type: "small-summary", domain });
+        } else {
+          logger.info(`[MEMORY] summary already in progress for domain=${domain}`);
+        }
       }
     } catch (err) {
       logger.error(`[MEMORY] failed to store raw RAG answer: ${err.message}`);
@@ -291,8 +303,6 @@ async function answerWithRag(query, domain) {
   if (response.ok && response.mode === "rag") {
    await queryCache.set(cacheKey, response); 
   }
-
-  enqueueSummaryJob(answer, domain, topScore).catch(() => {});
 
   return response;
   } catch (err) {

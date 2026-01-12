@@ -34,8 +34,25 @@ async function clearRawAnswers(domain) {
   await redisClient.del(key);
 }
 
+function getSummLockKey(domain) {
+  return `rag:raw:summarizing:${domain}`;
+}
+
+async function tryAcquireSummLock(domain) {
+  const key = getSummLockKey(domain);
+  // NX = only set if not exists, EX = ttl seconds
+  const ok = await redisClient.set(key, "1", "NX", "EX", 60);
+  return ok === "OK";
+}
+
+async function releaseSummLock(domain) {
+  await redisClient.del(getSummLockKey(domain));
+}
+
 module.exports = {
   pushRawAnswer,
   getAllRawAnswers,
   clearRawAnswers,
+  tryAcquireSummLock,
+  releaseSummLock,
 };
