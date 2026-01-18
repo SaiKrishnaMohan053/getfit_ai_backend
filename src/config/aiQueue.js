@@ -33,6 +33,7 @@ async function processor(job) {
           pdfPath: download.filePath,
           source_file,
           domain,
+          job,
         });
       } finally {
         if (tempDir) cleanupTempDir(tempDir);

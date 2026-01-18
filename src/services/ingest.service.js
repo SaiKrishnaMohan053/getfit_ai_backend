@@ -20,6 +20,7 @@ const {
 
 // ---------------- CONFIG ----------------
 const BATCH_SIZE = 50;
+const TAG_BATCH_SIZE = 8;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 600;
 
@@ -60,7 +61,7 @@ async function withRetry(fn, label) {
 }
 
 // ---------------- MAIN INGEST ----------------
-async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
+async function trainDocument({ pdfPath, domain, source_file, version_tag, job }) {
   const start = Date.now();
 
   const vtag =
@@ -70,9 +71,16 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
   logger.info(`Training started: ${source_file}`);
   writeLog(`Training started: ${source_file}`);
 
+  async function setProgress(pct, stage) {
+    if (!job || typeof job.updateProgress !== "function") return;
+    await job.updateProgress({ pct, stage, at: new Date().toISOString() });
+  }
+
   try{
     // Parse PDF
+    await setProgress(2, "reading-pdf");
     const buffer = fs.readFileSync(pdfPath);
+    await setProgress(8, "parsing-pdf");
     const text = await parsePdf(buffer);
     if (!text) {
       logger.error("Parsed PDF returned empty text");
@@ -85,6 +93,7 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
     const category = domain;
 
     // Chunk (SMART)
+    await setProgress(12, "chunking");
     const chunks = chunkText(text, {
       maxChars: 2500,
       overlapSentences: 1,
@@ -97,6 +106,8 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
       logger.error("No chunks generated from PDF");
       throw new Error("No chunks generated from PDF");
     }
+
+    await setProgress(15, `tagging-embedding-upsert (0/${totalChunks})`);
 
     writeLog(`Generated ${totalChunks} chunks`);
     writeLog(`sample chunk lens: ${chunks.slice(0,5).map(c=>c.length).join(", ")}`);
@@ -111,14 +122,27 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
 
     for (let i = 0; i < totalChunks; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE);
+      const done = Math.min(i + batch.length, totalChunks);
+
+      const loopPct = 15 + Math.floor((done / totalChunks) * 80);
+      await setProgress(loopPct, `processing-chunks (${done}/${totalChunks})`);      
 
       const tags = [];
-      for (let j = 0; j < batch.length; j++) {
-        const t = await tagChunk({
-          chunk: batch[j],
+      for (let t = 0; t < batch.length; t += TAG_BATCH_SIZE) {
+        const tagSlice = batch.slice(t,t + TAG_BATCH_SIZE);
+
+        const tagResults = await tagChunk({
+          chunks: tagSlice,
           source_file,
         });
-        tags.push(t);
+
+        tags.push(...tagResults);
+      }
+
+      if (tags.length !== batch.length) {
+        logger.warn(
+          `[TAG] tag count mismatch batch=${batch.length} tags=${tags.length} file=${source_file}`
+        );
       }
 
       const vectors = await withRetry(
@@ -179,6 +203,8 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag }) {
       }, "Upsert batch");
       inserted += points.length;
     }
+
+    await setProgress(100, "completed");
 
     const seconds = ((Date.now() - start) / 1000).toFixed(2);
     writeLog(`Completed ${inserted} chunks in ${seconds}s`);

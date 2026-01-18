@@ -1,9 +1,14 @@
 // src/utils/embedding.js
 
 const { openai } = require("../config/openaiClient");
-const { splitByChars } = require("./chunker");
 
 const MAX_CHARS = 1800;
+
+function normalizeForEmbedding(text) {
+  const s = String(text || "").replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  return s.length > MAX_CHARS ? s.slice(0, MAX_CHARS) : s;
+}
 
 /**
  * Generate OpenAI embeddings for an array of text inputs.
@@ -21,13 +26,11 @@ async function embedText(texts) {
     return [];
   }
 
-  texts = texts.flatMap(t => 
-    t.length > MAX_CHARS ? splitByChars(t, MAX_CHARS, 200) : [t]
-  );
+  const normalized = texts.map(normalizeForEmbedding);
 
   const response = await openai.embeddings.create({
     model: "text-embedding-3-large",
-    input: texts,
+    input: normalized,
   });
 
   return response.data.map((item) => item.embedding);

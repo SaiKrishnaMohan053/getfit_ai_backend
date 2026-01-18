@@ -91,13 +91,16 @@ async function getJobStatus(jobId) {
       };
     }
 
+    const progress = job.progress || 0;
     const state = await withTimeout(job.getState(), 2000);
 
     return {
       found: true,
       jobId: job.id,
       status: state,
-      progress: job.progress || 0,
+      progress,
+      progressPct: typeof progress === "object" ? (progress.pct ?? 0) : progress,
+      stage: typeof progress === "object" ? (progress.stage ?? "") : "",
       attemptsMade: job.attemptsMade,
       timestamp: new Date().toISOString(),
       result: state === "completed" ? job.returnvalue : undefined,

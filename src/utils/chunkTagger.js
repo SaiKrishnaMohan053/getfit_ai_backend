@@ -86,24 +86,57 @@ function normalizeTag(tag) {
   out.confidence = clamp01(tag.confidence);
   out.reasons = String(tag.reasons || "").slice(0, 200);
 
+  if (out.domain !== "unknown" && out.confidence < 0.35) {
+    return { domain: "unknown", subdomain: "unknown", topics: [], confidence: out.confidence, reasons: "low-confidence-tag" };
+  }
+
   return out;
+}
+
+// Light herusistic to check openAI on junk
+function isLikelyJunkChunk(chunk) {
+  const s = String(chunk || "").trim();
+  if (s.length < 120) return true;
+
+  const lower = s.toLowerCase();
+  const junkSignals = [
+    "table of contents", "contents", "copyright", "all rights reserved",
+    "isbn", "index", "references", "bibliography",
+  ];
+  if (junkSignals.some(k => lower.includes(k))) return true;
+
+  // OCR noise-ish
+  const nonWord = (lower.match(/[^a-z0-9\s]/g) || []).length;
+  if (nonWord / Math.max(1, lower.length) > 0.35) return true;
+
+  return false;
 }
 
 /**
  * Tag a single chunk into domain/subdomain.
  * Safe by design: returns {domain:"unknown"} if parse/validation fails.
  */
-async function tagChunk({ chunk, source_file }) {
-  // If chunk is tiny or garbage, no need to spend tokens
-  if (!chunk || String(chunk).trim().length < 120) {
-    return {
-      domain: "unknown",
-      subdomain: "unknown",
-      topics: [],
-      confidence: 0,
-      reasons: "too-short",
-    };
+async function tagChunk({ chunks, source_file }) {
+  const results = new Array(chunks.length);
+
+  // pre-fill junk with unknown
+  const toClassify = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    if (isLikelyJunkChunk(chunk)) {
+      results[i] = {
+        domain: "unknown",
+        subdomain: "unknown",
+        topics: [],
+        confidence: 0,
+        reasons: "junk-chunk",
+      }
+    } else {
+      toClassify.push({ idx: i, text: String(chunk).slice(0, 1400) })
+    }
   }
+  
+  if (toClassify.length === 0) return results;
 
   const systemPrompt = `
 You are a strict text classifier for fitness knowledge ingestion.
@@ -122,53 +155,74 @@ Rules:
 - If the chunk is TOC, index, references, legal/copyright, OCR noise, or not meaningful coaching content -> domain=unknown.
 - If unsure -> domain=unknown.
 - confidence is 0.0 to 1.0.
-JSON format:
-{
-  "domain": "...",
-  "subdomain": "...",
-  "topics": ["...", "..."],
-  "confidence": 0.0,
-  "reasons": "short reason"
-}
-`;
+
+Return JSON array with SAME length as provided items.
+Each item must include "idx" and the tag fields.
+
+Format:
+[
+  {
+    "idx": 0,
+    "domain": "...",
+    "subdomain": "...",
+    "topics": ["...", "..."],
+    "confidence": 0.0,
+    "reasons": "..."
+  }, ...
+]
+`.trim();
 
   const userPrompt = `
 Source file: ${source_file || "unknown"}
-Chunk:
-${String(chunk).slice(0, 2200)}
-`;
+Items:
+${toClassify.map(x => `IDX: ${x.idx}\nCHUNK:${x.text}`).join("\n\n")}
+`.trim();
 
   const completion = await safeChatCompletion({
     model: "gpt-4o-mini",
     temperature: 0,
-    max_tokens: 180,
+    max_tokens: 900,
     messages: [
-      { role: "system", content: systemPrompt.trim() },
-      { role: "user", content: userPrompt.trim() },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
     ],
   });
 
   const raw = completion?.choices?.[0]?.message?.content || "";
   const parsed = safeJsonParse(raw);
 
-  const normalized = normalizeTag(parsed);
-
-  // One more safety: if model claims high confidence but outputs unknown topics, keep unknown
-  if (normalized.domain !== "unknown" && normalized.confidence < 0.35) {
-    return {
-      domain: "unknown",
-      subdomain: "unknown",
-      topics: [],
-      confidence: normalized.confidence,
-      reasons: "low-confidence-tag",
-    };
+  if (!Array.isArray(parsed)) {
+    for (const item of toClassify) {
+      results[item.idx] = {
+        domain: "unknown",
+        subdomain: "unknown",
+        topics: [],
+        confidence: 0,
+        reasons: "batch-parse-failed",
+      };
+    }
+    return results;
   }
 
-  logger.info(
-    `[TAG] ${source_file || "file"} domain=${normalized.domain} sub=${normalized.subdomain} conf=${normalized.confidence}`
-  );
+  for (const obj of parsed) {
+    const idx = Number(obj?.idx);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= chunks.length) continue;
+    results[idx] = normalizeTag(obj);
+  }
 
-  return normalized;
+  for (let i = 0; i < results.length; i++) {
+    if (!results[i]) {
+      results[i] = {
+        domain: "unknown",
+        subdomain: "unknown",
+        topics: [],
+        confidence: 0,
+        reasons: "missing-from-batch",
+      };
+    }
+  }
+
+  return results;
 }
 
 module.exports = { tagChunk };
