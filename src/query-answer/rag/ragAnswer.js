@@ -26,11 +26,6 @@ const STRICT_THRESHOLD_BY_DOMAIN = {
   nutrition: 0.75,
   lifestyle: 0.7,
 }
-const WEAK_THRESHOLD_BY_DOMAIN = {
-  training: 0.45,
-  nutrition: 0.5,
-  lifestyle: 0.5,
-}
 
 // Promise timeout wrapper
 function timeoutPromise(ms) {
@@ -116,62 +111,19 @@ async function answerWithRag(query, domain) {
 
   if (!results || results.length === 0) {
     logger.warn("Qdrant returned zero results for query");
-    const response = {
-      ok: false,
-      mode: "rag",
-      domain,
-      answer:
-        "Trainer library is currently unavailable. Please try again later.",
-      contextCount: 0,
-      sources: [],
-    };
-    return response;
+    return refuse(domain, SAFE_REFUSAL, [], 0);
   }
 
   results.sort((a, b) => b.score - a.score);
 
   const topScore = typeof results[0].score === "number" ? results[0].score : 0;
   const strictThreshold = STRICT_THRESHOLD_BY_DOMAIN[domain];
-  const weakThreshold = WEAK_THRESHOLD_BY_DOMAIN[domain];
-
-  logger.info(`[RAG] Score=${topScore.toFixed(3)} | strict=${strictThreshold} | weak=${weakThreshold}`);
 
   if (topScore < strictThreshold) {
-    const response = refuse(
-      domain,
-      REFUSAL_MESSAGE,
-      results,
-      topScore,
-    );
-    return response;
-  }
-  
-  logger.info(
-    `[RAG] domain=${domain} topScore=${topScore.toFixed(3)} thresholds=(weak:${weakThreshold}, strict:${strictThreshold})`
-  );
-
-  const filteredResults = results
-      .filter(
-        (r) =>
-          r.payload?.domain === domain &&
-          typeof r.score === "number" &&
-          r.score >= weakThreshold
-      )
-      .sort((a, b) => b.score - a.score)
-      .slice(0, FINAL_CONTEXT_K);
-
-  if (filteredResults.length < 2) {
-    return refuse(domain, REFUSAL_MESSAGE);
+    return refuse(domain, SAFE_REFUSAL, results, topScore);
   }
 
-  const strongChunkCount = filteredResults.filter(
-    r => r.score >= strictThreshold
-  ).length;
-
-  if (strongChunkCount === 0) {
-    logger.warn(`[RAG] No strong chunks despite strict pass | domain=${domain} | score=${topScore}`);
-    return refuse(domain, REFUSAL_MESSAGE, filteredResults, topScore);
-  }
+  const contextChunks = results.sort((a, b) => b.score - a.score).slice(0, FINAL_CONTEXT_K);
 
   // Build context string from top chunks
   logger.info("Step 4:building context from top chunks");
@@ -179,12 +131,13 @@ async function answerWithRag(query, domain) {
   const MAX_CHUNK_CHARS = Number(process.env.RAG_MAX_CHUNK_CHARS || "1200");
   const MAX_CONTEXT_CHARS = Number(process.env.RAG_MAX_CONTEXT_CHARS || "4000");
 
-  let context = filteredResults
-    .map((r, i) => {
-      const text = String(r.payload?.text || "").slice(0, MAX_CHUNK_CHARS);
-      return `(${i + 1}) ${text}`;
-    })
-    .join("\n---\n");
+  let context = contextChunks
+  .map((r, i) => {
+    const text = String(r.payload?.text || "").slice(0, MAX_CHUNK_CHARS);
+    return `(${i + 1}) ${text}`;
+  })
+  .join("\n---\n");
+
 
   if (context.length > MAX_CONTEXT_CHARS) {
     context = context.slice(0, MAX_CONTEXT_CHARS);
@@ -195,7 +148,7 @@ async function answerWithRag(query, domain) {
       You are a certified fitness coach.
       Rules:
       - Use ONLY the provided Context.
-      - If Context is insufficient, reply exactly: "I don’t know based on the trainer library."
+      - If Context is insufficient, reply exactly: "I don’t have verified trainer data for this yet."
       - No medical diagnosis or rehab protocols.
       - Be concise, practical, and structured.
       Format:
@@ -222,7 +175,7 @@ async function answerWithRag(query, domain) {
     completion = await Promise.race([
       safeChatCompletion({
         model: "gpt-4o-mini",
-        temperature: 0.3,
+        temperature: 0,
         max_tokens: Number(process.env.RAG_MAX_TOKENS || "350"),
         messages: [
           { role: "system", content: systemPrompt },
@@ -237,10 +190,7 @@ async function answerWithRag(query, domain) {
       completion = {
         choices: [
           {
-            message: {
-              content:
-                "I have relevant trainer information, but generating the final answer is taking longer than expected. Please try again shortly.",
-            },
+            message: { content: SAFE_REFUSAL },
           },
         ],
       };
@@ -250,15 +200,15 @@ async function answerWithRag(query, domain) {
   }
   logger.info("Step 5 done: OpenAI returned final answer");
 
-  const answer = completion.choices?.[0]?.message?.content || "The AI engine couldn’t generate a response right now. Please try again.";
+  const answer = completion.choices?.[0]?.message?.content || SAFE_REFUSAL;
 
   // Guard: LLM refused despite passing strict checks
-  if (answer.trim() === REFUSAL_MESSAGE) {
+  if (answer.trim() === SAFE_REFUSAL) {
     logger.warn(
       `[RAG] LLM returned refusal after strict pass | domain=${domain} | score=${topScore.toFixed(3)}`
     );
 
-    return refuse(domain, REFUSAL_MESSAGE, filteredResults, topScore);
+    return refuse(domain, SAFE_REFUSAL, contextChunks, topScore);
   }
 
   const response = {
@@ -267,9 +217,9 @@ async function answerWithRag(query, domain) {
     ragMode: "strict",
     domain,
     answer,
-    contextCount: filteredResults.length,
+    contextCount: contextChunks.length,
     topScore,
-    sources: filteredResults.map((r) => ({
+    sources: contextChunks.map((r) => ({
       score: r.score,
       source_file: r.payload?.source_file,
       domain: r.payload?.domain,
@@ -319,10 +269,10 @@ async function answerWithRag(query, domain) {
   }
 }
 
-const REFUSAL_MESSAGE = "I don’t know based on the trainer library.";
+const SAFE_REFUSAL = "I don’t have verified trainer data for this yet.";
 
 function refuse(domain, message, results = [], topScore = 0) {
-  logger.info(`[RAG] refusing to answer for domain=${domain}: ${message}`);
+  logger.info(`[RAG] refusing to answer | domain=${domain} | score=${topScore}`);
   return {
     ok: false,
     mode: "rag",
@@ -337,7 +287,7 @@ function refuse(domain, message, results = [], topScore = 0) {
       domain: r.payload?.domain,
       chunk_index: r.payload?.chunk_index,
     })),
-  }
+  };
 }
 
 module.exports = { answerWithRag };

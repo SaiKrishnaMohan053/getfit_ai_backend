@@ -1,5 +1,5 @@
 const { normalizeInput } = require("../query-answer/normalizeInput");
-const { routeQuery } = require("../query-answer/brainRouter");
+const { classifyIntent, intentToDomain } = require("../query-answer/intent/intentClassifier");
 const { handleSmallTalk } = require("../query-answer/handlers/smallTalk.handler");
 const { handleAppQuery } = require("../query-answer/handlers/appQuery.handler");
 const { handleBlockedQuery } = require("../query-answer/handlers/blocked.handler");
@@ -10,29 +10,30 @@ async function getRagAnswer(input) {
   const { query } = normalizeInput(input);
   if (!query) throw new Error("Query is required");
 
-  const route = routeQuery(query);
-  logger.info(`Brain router selected path: ${route.type}`);
+  const intent = await classifyIntent(query);
+  logger.info(`Intent classified as: ${intent}`);
 
-  switch (route.type) {
-    case "blocked":
-      return handleBlockedQuery();
-    case "smallTalk":
-      return handleSmallTalk(query);
-    case "app":
-      return handleAppQuery(query);
-    case "domainQuestion":
-      return answerWithRag(query, route.domain);
-    case "unsupported":
-    default:
-      return {
-        ok: false,
-        mode: "unsupported",
-        answer:
-          "I can only help with verified training, nutrition, or lifestyle questions right now.",
-        contextCount: 0,
-        sources: [],
-      }
+  if (intent === "small_talk") {
+    return handleSmallTalk(query);
   }
+
+  if (intent === "app_query") {
+    return handleAppQuery(query);
+  }
+
+  if (intent === "unknown") {
+    return {
+      ok: false,
+      mode: "unknown",
+      answer: "I don’t have verified trainer data for this yet.",
+      contextCount: 0,
+      sources: [],
+    };
+  }
+
+  const domain = intentToDomain(intent);
+
+  return answerWithRag(query, domain);
 }
 
 module.exports = { getRagAnswer };
