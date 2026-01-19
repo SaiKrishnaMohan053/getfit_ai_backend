@@ -38,7 +38,7 @@ async function safeChatCompletion(options) {
     const status = err?.response?.status || 500;
     const took = Date.now() - startedAt;
 
-    if (err.message?.includes("TIMEOUT" || err.code === "TIMEOUT_8000")) {
+    if (err.message?.includes("TIMEOUT") || err.code === "TIMEOUT_8000") {
       logger.error(
         `OpenAI chat TIMEOUT after ${took}ms for model=${options.model}`
       );
