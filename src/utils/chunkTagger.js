@@ -178,15 +178,32 @@ Items:
 ${toClassify.map(x => `IDX: ${x.idx}\nCHUNK:${x.text}`).join("\n\n")}
 `.trim();
 
-  const completion = await safeChatCompletion({
-    model: "gpt-4o-mini",
-    temperature: 0,
-    max_tokens: 900,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  });
+  let completion;
+  try {
+    completion = await safeChatCompletion({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      max_tokens: 900,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    });
+  } catch (err) {
+    logger.error("[TAG] OpenAI failed, marking batch unnown");
+    
+    for (const item of toClassify) {
+      results[item.idx] = {
+        domain: "unknown",
+        subdomain: "unknown",
+        topics: [],
+        confidence: 0,
+        reasons: "openai-timeout",
+      };
+    }
+
+    return results;
+  }
 
   const raw = completion?.choices?.[0]?.message?.content || "";
   const parsed = safeJsonParse(raw);

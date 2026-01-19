@@ -8,6 +8,10 @@ function openaiTimeout(ms) {
   });
 }
 
+async function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 /**
  * Safe wrapper for OpenAI calls.
  * Ensures your API NEVER crashes when OpenAI returns 429/500/timeout.
@@ -34,10 +38,12 @@ async function safeChatCompletion(options) {
     const status = err?.response?.status || 500;
     const took = Date.now() - startedAt;
 
-    if (err.message && err.message.startsWith("TIMEOUT")) {
+    if (err.message?.includes("TIMEOUT" || err.code === "TIMEOUT_8000")) {
       logger.error(
         `OpenAI chat TIMEOUT after ${took}ms for model=${options.model}`
       );
+      const backoff = 2000 + Math.random() * 3000;
+      await sleep(backoff);
     } else {
       logger.error(
         `OpenAI failure (${status}) for model=${options.model}: ${err.message}`
@@ -50,8 +56,7 @@ async function safeChatCompletion(options) {
       choices: [
         {
           message: {
-            content:
-              "I’m having trouble reaching the AI engine right now. Please try again shortly.",
+            content: "[]",
           },
         },
       ],

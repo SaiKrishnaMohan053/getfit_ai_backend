@@ -20,7 +20,7 @@ const {
 
 // ---------------- CONFIG ----------------
 const BATCH_SIZE = 50;
-const TAG_BATCH_SIZE = 8;
+const TAG_BATCH_SIZE = 4;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 600;
 
