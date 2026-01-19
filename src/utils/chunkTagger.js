@@ -190,7 +190,7 @@ ${toClassify.map(x => `IDX: ${x.idx}\nCHUNK:${x.text}`).join("\n\n")}
       ],
     });
   } catch (err) {
-    logger.error("[TAG] OpenAI failed, marking batch unnown");
+    logger.error("[TAG] OpenAI failed, marking batch unknown");
     
     for (const item of toClassify) {
       results[item.idx] = {
