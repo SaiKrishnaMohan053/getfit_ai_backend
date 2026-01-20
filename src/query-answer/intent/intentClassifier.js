@@ -10,25 +10,84 @@ const VALID_INTENTS = [
   "unknown",
 ];
 
+/**
+ * ------------------------
+ * SMALL TALK KEYWORDS
+ * ------------------------
+ */
+const GREETINGS = [
+  "hi",
+  "hello",
+  "hey",
+  "yo",
+  "hiya",
+  "hii",
+  "heyy",
+  "hola",
+  "namaste",
+];
+
+const PLEASANTRIES = [
+  "how are you",
+  "how you doing",
+  "how's it going",
+  "what's up",
+  "wassup",
+  "how have you been",
+];
+
+const TIME_GREETINGS = [
+  "good morning",
+  "good afternoon",
+  "good evening",
+  "good night",
+];
+
+const POLITE = [
+  "thanks",
+  "thank you",
+  "thx",
+  "ty",
+  "bye",
+  "goodbye",
+  "see you",
+  "take care",
+];
+
+/**
+ * HARD BLOCKERS — NEVER small talk
+ */
+const SMALL_TALK_BLOCKERS = [
+  "politics",
+  "science",
+  "technology",
+  "quantum",
+  "elon",
+  "history",
+  "math",
+  "physics",
+];
+
 function isPureSmallTalk(query) {
   const q = query.toLowerCase().trim();
 
-  const patterns = [
-    /^hi$/,
-    /^hello$/,
-    /^hey$/,
-    /^how you doing$/,
-    /^how are you$/,
-    /^what'?s up$/,
-    /^good (morning|afternoon|evening|night)$/,
-    /^who are you$/,
-    /^thank you$/,
-    /^thanks$/,
+  if (SMALL_TALK_BLOCKERS.some(k => q.startsWith(k) || q.includes(k))) return false;
+
+  const allowed = [
+    ...GREETINGS,
+    ...PLEASANTRIES,
+    ...TIME_GREETINGS,
+    ...POLITE,
   ];
 
-  return patterns.some(p => p.test(q));
+  return allowed.some(k => q === k || q.startsWith(k));
 }
 
+/**
+ * ------------------------
+ * LLM Intent Classifier
+ * ------------------------
+ */
 const INTENT_SYSTEM_PROMPT = `
 You are an intent classifier for a safety-first fitness AI.
 

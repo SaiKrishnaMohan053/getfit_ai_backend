@@ -13,10 +13,12 @@ Examples you MAY answer:
 - hello
 - hey
 - how are you
-- how you doing
+- how you 
+- what's up
 - good morning
 - good evening
 - thanks
+- bye
 
 If the user asks:
 - general knowledge
@@ -25,14 +27,16 @@ If the user asks:
 - people
 - explanations
 - questions starting with "who", "what", "why", "how"
+- request for information
 
 You MUST reply with EXACTLY this sentence and nothing else:
 "I don’t have verified trainer data for this yet."
 
 Do NOT explain.
 Do NOT add extra text.
-Do NOT be helpful beyond greetings.
 `;
+
+const SAFE_REFUSAL = "I don’t have verified trainer data for this yet.";
 
 async function handleSmallTalk(query) {
   const completion = await safeChatCompletion({
@@ -45,11 +49,12 @@ async function handleSmallTalk(query) {
     ],
   });
 
-  const answer = completion.choices?.[0]?.message?.content || "";
+  const answer = completion.choices?.[0]?.message?.content || SAFE_REFUSAL;
+  const isRefusal = answer === SAFE_REFUSAL;
 
   return {
-    ok: answer !== "I don’t have verified trainer data for this yet.",
-    mode: answer === "I don’t have verified trainer data for this yet." ? "unknown" : "small-talk",
+    ok: !isRefusal,
+    mode: isRefusal ? "unknown" : "small-talk",
     answer,
     contextCount: 0,
     sources: [],
