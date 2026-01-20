@@ -51,9 +51,9 @@ describe("ROUTE: POST /api/query-answer (STRICT v1)", () => {
       .send({ query: "hi" });
 
     expect(res.statusCode).toBe(200);
-    expect(res.body.mode).toBe("unknown");
-    expect(res.body.ok).toBe(false);
-    expect(res.body.answer).toBe(SAFE_REFUSAL);
+    expect(res.body.mode).toBe("small-talk");
+    expect(res.body.ok).toBe(true);
+    expect(res.body.answer.length).toBeGreaterThan(0);
   });
 
   it("returns SAFE_REFUSAL for unsupported topics", async () => {

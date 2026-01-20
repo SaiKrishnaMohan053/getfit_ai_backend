@@ -10,6 +10,25 @@ const VALID_INTENTS = [
   "unknown",
 ];
 
+function isPureSmallTalk(query) {
+  const q = query.toLowerCase().trim();
+
+  const patterns = [
+    /^hi$/,
+    /^hello$/,
+    /^hey$/,
+    /^how you doing$/,
+    /^how are you$/,
+    /^what'?s up$/,
+    /^good (morning|afternoon|evening|night)$/,
+    /^who are you$/,
+    /^thank you$/,
+    /^thanks$/,
+  ];
+
+  return patterns.some(p => p.test(q));
+}
+
 const INTENT_SYSTEM_PROMPT = `
 You are an intent classifier for a safety-first fitness AI.
 
@@ -31,6 +50,10 @@ Rules:
 `;
 
 async function classifyIntent(query) {
+  if (isPureSmallTalk(query)) {
+    return "small_talk";
+  }
+
   const completion = await safeChatCompletion({
     model: "gpt-4o-mini",
     temperature: 0,
