@@ -1,3 +1,36 @@
+function isMedicalOrSelfHarm(query) {
+  const q = query.toLowerCase();
+
+  const patterns = [
+    // self-harm / suicide
+    "suicide",
+    "kill myself",
+    "self harm",
+    "overdose",
+    "how much medicine",
+    "fatal dose",
+
+    // medical authority
+    "stop medication",
+    "replace my doctor",
+    "medical advice",
+
+    // injuries / diagnosis
+    "acl tear",
+    "meniscus",
+    "ligament tear",
+    "disc",
+    "slip disc",
+    "hernia",
+    "surgery",
+    "rehab",
+    "physio",
+    "diagnosis",
+  ];
+
+  return patterns.some(p => q.includes(p));
+}
+
 async function handleBlockedQuery() {
   return {
     ok: false,
@@ -9,4 +42,4 @@ async function handleBlockedQuery() {
   };
 }
 
-module.exports = { handleBlockedQuery };
+module.exports = { isMedicalOrSelfHarm, handleBlockedQuery };

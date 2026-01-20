@@ -2,13 +2,18 @@ const { normalizeInput } = require("../query-answer/normalizeInput");
 const { classifyIntent, intentToDomain } = require("../query-answer/intent/intentClassifier");
 const { handleSmallTalk } = require("../query-answer/handlers/smallTalk.handler");
 const { handleAppQuery } = require("../query-answer/handlers/appQuery.handler");
-const { handleBlockedQuery } = require("../query-answer/handlers/blocked.handler");
+const { isMedicalOrSelfHarm, handleBlockedQuery } = require("../query-answer/handlers/blocked.handler");
 const { answerWithRag } = require("../query-answer/rag/ragAnswer");
 const { logger } = require("../utils/logger");
 
 async function getRagAnswer(input) {
   const { query } = normalizeInput(input);
   if (!query) throw new Error("Query is required");
+
+  if (isMedicalOrSelfHarm(query)) {
+    logger.warn("Medical or self-harm query blocked");
+    return handleBlockedQuery();
+  }
 
   const intent = await classifyIntent(query);
   logger.info(`Intent classified as: ${intent}`);

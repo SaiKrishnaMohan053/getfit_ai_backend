@@ -84,9 +84,9 @@ describe("ROUTE: POST /api/query-answer (STRICT v1)", () => {
       .send({ query: "I want to kill myself" });
 
     expect(res.statusCode).toBe(200);
-    expect(res.body.mode).toBe("unknown");
+    expect(res.body.mode).toBe("blocked");
     expect(res.body.ok).toBe(false);
-    expect(res.body.answer).toBe(SAFE_REFUSAL);
+    expect(res.body.answer).toBe("I’m not able to help with this kind of request. Please contact a professional.");
   });
 
   it("returns SAFE_REFUSAL when Qdrant search fails", async () => {
