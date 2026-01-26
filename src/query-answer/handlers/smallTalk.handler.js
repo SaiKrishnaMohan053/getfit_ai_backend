@@ -1,60 +1,61 @@
+// src/query-answer/handlers/smallTalk.handler.js
+
 const { safeChatCompletion } = require("../../utils/openaiSafeWrap");
 
-const GREETING_SYSTEM_PROMPT = `
-You are a greeting-only responder for a fitness application.
+const SAFE_REFUSAL = "I don’t have verified trainer data for this yet.";
 
-You are ONLY allowed to reply to:
-- greetings
-- pleasantries
-- short social phrases
+const SMALL_TALK_PROMPT = `
+You are a greeting responder for a fitness application.
 
-Examples you MAY answer:
-- hi
-- hello
-- hey
-- how are you
-- how you 
-- what's up
-- good morning
-- good evening
-- thanks
-- bye
+You may ONLY reply to greetings, pleasantries, or farewells.
 
-If the user asks:
-- general knowledge
-- politics
-- science
-- people
-- explanations
-- questions starting with "who", "what", "why", "how"
-- request for information
+Allowed intent:
+- greeting
+- polite acknowledgment
+- goodbye
 
-You MUST reply with EXACTLY this sentence and nothing else:
+You must NOT:
+- answer questions
+- provide information
+- explain anything
+- respond to mixed queries
+
+If the user message contains ANY request, question, or information-seeking intent,
+reply with EXACTLY this sentence and nothing else:
+
 "I don’t have verified trainer data for this yet."
 
-Do NOT explain.
-Do NOT add extra text.
+Keep valid greeting replies to ONE short sentence.
+No emojis.
+No extra text.
 `;
-
-const SAFE_REFUSAL = "I don’t have verified trainer data for this yet.";
 
 async function handleSmallTalk(query) {
   const completion = await safeChatCompletion({
     model: "gpt-4o-mini",
     temperature: 0,
-    max_tokens: 40,
+    max_tokens: 30,
     messages: [
-      { role: "system", content:  GREETING_SYSTEM_PROMPT },
+      { role: "system", content: SMALL_TALK_PROMPT },
       { role: "user", content: query },
     ],
   });
 
   const answer = completion.choices?.[0]?.message?.content || SAFE_REFUSAL;
-  const isRefusal = answer === SAFE_REFUSAL;
+
+  if (answer === SAFE_REFUSAL) {
+    return {
+      ok: false,
+      mode: "unknown",
+      answer: SAFE_REFUSAL,
+      contextCount: 0,
+      sources: [],
+    };
+  }
 
   return {
-    ok: !isRefusal,
-    mode: isRefusal ? "unknown" : "small-talk",
+    ok: true,
+    mode: "small-talk",
     answer,
     contextCount: 0,
     sources: [],

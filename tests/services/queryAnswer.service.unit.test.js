@@ -2,9 +2,8 @@
  * queryAnswer.service tests
  */
 
-jest.mock("../../src/query-answer/intent/intentClassifier", () => ({
-  classifyIntent: jest.fn(),
-  intentToDomain: jest.fn(),
+jest.mock("../../src/query-answer/router/llmRouter", () => ({
+  routeWithLLM: jest.fn(),
 }));
 
 jest.mock("../../src/utils/openaiSafeWrap", () => ({
@@ -34,7 +33,7 @@ jest.mock("../../src/config/qdrantClient", () => ({
   },
 }));
 
-const { classifyIntent, intentToDomain } = require("../../src/query-answer/intent/intentClassifier");
+const { routeWithLLM } = require("../../src/query-answer/router/llmRouter");
 const queryCache = require("../../src/cache/queryCache");
 const { qdrantClient } = require("../../src/config/qdrantClient");
 const { getRagAnswer } = require("../../src/services/queryAnswer.service");
@@ -48,7 +47,7 @@ describe("SERVICE: getRagAnswer – Brain Router (STRICT v1)", () => {
   });
 
   it("routes small talk queries without RAG", async () => {
-    classifyIntent.mockResolvedValue("small_talk");
+    routeWithLLM.mockResolvedValue({ route: "small_talk", domain: null });
 
     const res = await getRagAnswer("how are you");
 
@@ -58,7 +57,7 @@ describe("SERVICE: getRagAnswer – Brain Router (STRICT v1)", () => {
   });
 
   it("routes app queries without RAG", async () => {
-    classifyIntent.mockResolvedValue("app_query");
+    routeWithLLM.mockResolvedValue({ route: "app_query", domain: null });
 
     const res = await getRagAnswer("show my workouts history");
 
@@ -68,7 +67,7 @@ describe("SERVICE: getRagAnswer – Brain Router (STRICT v1)", () => {
   });
 
   it("returns safe refusal for unknown intent", async () => {
-    classifyIntent.mockResolvedValue("unknown");
+    routeWithLLM.mockResolvedValue({ route: "unknown", domain: null });
 
     const res = await getRagAnswer("Tell me about Elon Musk");
 
@@ -79,8 +78,7 @@ describe("SERVICE: getRagAnswer – Brain Router (STRICT v1)", () => {
   });
 
   it("returns cached RAG answer without running search", async () => {
-    classifyIntent.mockResolvedValue("training_question");
-    intentToDomain.mockReturnValue("training");
+    routeWithLLM.mockResolvedValue({ route: "rag", domain: "training" });
 
     queryCache.get.mockResolvedValue({
       ok: true,
@@ -99,8 +97,7 @@ describe("SERVICE: getRagAnswer – Brain Router (STRICT v1)", () => {
   });
 
   it("runs full RAG when confidence is HIGH → strict mode", async () => {
-    classifyIntent.mockResolvedValue("training_question");
-    intentToDomain.mockReturnValue("training");
+    routeWithLLM.mockResolvedValue({ route: "rag", domain: "training" });
 
     queryCache.get.mockResolvedValue(null);
 
@@ -133,8 +130,7 @@ describe("SERVICE: getRagAnswer – Brain Router (STRICT v1)", () => {
   });
 
   it("returns safe refusal when confidence is LOW", async () => {
-    classifyIntent.mockResolvedValue("training_question");
-    intentToDomain.mockReturnValue("training");
+    routeWithLLM.mockResolvedValue({ route: "rag", domain: "training" });
 
     queryCache.get.mockResolvedValue(null);
 
@@ -158,8 +154,7 @@ describe("SERVICE: getRagAnswer – Brain Router (STRICT v1)", () => {
   });
 
   it("returns safe refusal when Qdrant returns NO hits", async () => {
-    classifyIntent.mockResolvedValue("training_question");
-    intentToDomain.mockReturnValue("training");
+    routeWithLLM.mockResolvedValue({ route: "rag", domain: "training" });
 
     queryCache.get.mockResolvedValue(null);
     qdrantClient.search.mockResolvedValue([]);
