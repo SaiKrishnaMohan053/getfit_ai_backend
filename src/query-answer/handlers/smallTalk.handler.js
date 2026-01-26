@@ -2,8 +2,6 @@
 
 const { safeChatCompletion } = require("../../utils/openaiSafeWrap");
 
-const SAFE_REFUSAL = "I don’t have verified trainer data for this yet.";
-
 const SMALL_TALK_PROMPT = `
 You are a greeting responder for a fitness application.
 
@@ -41,17 +39,7 @@ async function handleSmallTalk(query) {
     ],
   });
 
-  const answer = completion.choices?.[0]?.message?.content || SAFE_REFUSAL;
-
-  if (answer === SAFE_REFUSAL) {
-    return {
-      ok: false,
-      mode: "unknown",
-      answer: SAFE_REFUSAL,
-      contextCount: 0,
-      sources: [],
-    };
-  }
+  const answer = completion.choices?.[0]?.message?.content || "Hello!";
 
   return {
     ok: true,
