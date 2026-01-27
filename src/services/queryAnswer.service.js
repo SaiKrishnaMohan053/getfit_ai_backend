@@ -1,6 +1,5 @@
 const { normalizeInput } = require("../query-answer/normalizeInput");
 const { routeWithLLM } = require("../query-answer/router/llmRouter");
-const { handleSmallTalk } = require("../query-answer/handlers/smallTalk.handler");
 const { handleAppQuery } = require("../query-answer/handlers/appQuery.handler");
 const { handleBlockedQuery } = require("../query-answer/handlers/blocked.handler");
 const { answerWithRag } = require("../query-answer/rag/ragAnswer");
@@ -25,7 +24,7 @@ async function getRagAnswer(input) {
   const { query } = normalizeInput(input);
   if (!query) throw new Error("Query is required");
 
-  const { route, domain } = await routeWithLLM(query);
+  const { route, domain, answer } = await routeWithLLM(query);
 
   if (typeof route !== "string" || 
     !VALID_ROUTES.includes(route) ||
@@ -34,23 +33,33 @@ async function getRagAnswer(input) {
   ) {
     logger.error(`[ROUTER] Invalid routing decision`, { route, domain });
     return safeUnknown();
+
   }
 
   switch (route) {
     case "small_talk":
-      return handleSmallTalk(query);
+      return {
+        ok: true,
+        mode: "small-talk",
+        answer: answer ?? "Hello!",
+        contextCount: 0,
+        sources: [],
+      };
 
     case "medical":
       return handleBlockedQuery(query);
 
     case "app_query":
-      return handleAppQuery(query);
+      return {
+        ok: true,
+        mode: "app-query",
+        ...await handleAppQuery(query),
+      };
 
     case "rag":
       return answerWithRag(query, domain);
 
     case "unknown":
-    default:
       return safeUnknown();
   }
 }

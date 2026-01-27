@@ -47,7 +47,7 @@ describe("SERVICE: getRagAnswer – Brain Router (STRICT v1)", () => {
   });
 
   it("routes small talk queries without RAG", async () => {
-    routeWithLLM.mockResolvedValue({ route: "small_talk", domain: null });
+    routeWithLLM.mockResolvedValue({ route: "small_talk", domain: null, answer: "Hey! How's it going?" });
 
     const res = await getRagAnswer("how are you");
 

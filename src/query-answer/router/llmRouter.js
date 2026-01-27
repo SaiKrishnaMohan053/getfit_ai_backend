@@ -1,63 +1,69 @@
 const { safeChatCompletion } = require("../../utils/openaiSafeWrap");
 
 const ROUTER_PROMPT = `
-You are a routing engine for a safety-first fitness AI.
+You are a conversational intent router for a fitness AI.
 
-Your job is to decide how the system should handle the user query.
+Your job is to decide how to handle the user message
+AND generate a response ONLY for small talk.
 
 Return ONLY valid JSON. No explanation.
 
---------------------
-ROUTES
---------------------
-- small_talk: greetings, pleasantries, or farewells ONLY
-- medical: medical conditions, medications, diagnosis, treatment, self-harm
-- app_query: user plans, workouts, dashboard, app features
-- rag: fitness questions that need trainer knowledge
-- unknown: general knowledge, politics, people, science, or unclear queries
+--------------------------------
+INTENT DEFINITIONS
+--------------------------------
 
---------------------
-PRIORITY RULES (FOLLOW STRICTLY)
---------------------
-1) If the query mentions self-harm, suicide, medical conditions, diagnosis, treatment, or medication → route MUST be "medical"
+small_talk:
+- greetings
+- social pleasantries
+- courtesy check-ins
+- conversation openers
+Examples:
+"hi", "hello", "how are you?", "hope you're doing well",
+"what's up", "all good?", "just checking in"
 
-2) If the query is ONLY a greeting, pleasantry, or farewell
-   AND contains NO question or request → route MUST be "small_talk"
+rag:
+- fitness, workout, training, nutrition, lifestyle questions
+- advice-seeking or guidance-related queries
+A greeting mixed with a fitness question is STILL rag.
 
-3) If the query contains a fitness-related question
-   (training, nutrition, lifestyle),
-   EVEN IF it starts with a greeting → route MUST be "rag"
+medical:
+- self-harm, suicide
+- medical conditions, diagnosis, treatment, medication
 
-4) If the query is about the app itself (plans, workouts, dashboard, features) → route MUST be "app_query"
+app_query:
+- questions about plans, workouts, dashboard, app features
 
-5) If the query does not clearly fit any category above → route MUST be "unknown"
+unknown:
+- politics, general knowledge, people, science, unclear intent
 
---------------------
-IMPORTANT CLARIFICATIONS
---------------------
-- A greeting mixed with a fitness question is NOT small_talk
-- Mixed greeting + fitness question is VALID for rag
-- small_talk is ONLY for pure greetings with no questions
-- If route is not rag, domain MUST be null
+--------------------------------
+STRICT RULES
+--------------------------------
 
---------------------
-RAG DOMAIN RULES
---------------------
-If route is "rag", assign ONE domain:
-- training
-- nutrition
-- lifestyle
+1) Self-harm or medical content → medical
+2) Pure social messages with NO request → small_talk
+3) Fitness questions (even with greeting) → rag
+4) App usage questions → app_query
+5) Otherwise → unknown
 
-Otherwise domain MUST be null.
+--------------------------------
+RESPONSE FORMAT
+--------------------------------
 
---------------------
-RESPONSE FORMAT (STRICT)
---------------------
 Return JSON exactly like this:
 
+For small talk:
 {
-  "route": "small_talk | medical | app_query | rag | unknown",
-  "domain": "training | nutrition | lifestyle | null"
+  "route": "small_talk",
+  "domain": null,
+  "answer": "<one friendly sentence>"
+}
+
+For non-small talk:
+{
+  "route": "rag | medical | app_query | unknown",
+  "domain": "training | nutrition | lifestyle | null",
+  "answer": null
 }
 `;
 
@@ -76,9 +82,13 @@ async function routeWithLLM(query) {
 
   try {
     const parsed = JSON.parse(raw);
-    return parsed;
+    return {
+      route: parsed.route,
+      domain: parsed.domain ?? null,
+      answer: parsed.answer ?? null,
+    };
   } catch {
-    return { route: "unknown", domain: null };
+    return { route: "unknown", domain: null, answer: null };
   }
 }
 
