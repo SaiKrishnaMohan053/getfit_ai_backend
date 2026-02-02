@@ -110,7 +110,14 @@ describe("ROUTE: POST /api/query-answer (STRICT v1)", () => {
   it("returns SAFE_REFUSAL when OpenAI fails", async () => {
     const { safeChatCompletion } = require("../../src/utils/openaiSafeWrap");
 
-    safeChatCompletion.mockRejectedValueOnce(
+    safeChatCompletion.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify({
+        route: "rag",
+        domain: "nutrition",
+        answer: null
+      }) }}],
+    })
+    .mockRejectedValueOnce(
       new Error("openai offline")
     );
 

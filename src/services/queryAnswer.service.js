@@ -1,13 +1,16 @@
 const { normalizeInput } = require("../query-answer/normalizeInput");
 const { routeWithLLM } = require("../query-answer/router/llmRouter");
+const { medicalSafetyFirewall } = require("../query-answer/safety/medicalSafetyFirewall");
 const { handleAppQuery } = require("../query-answer/handlers/appQuery.handler");
 const { handleBlockedQuery } = require("../query-answer/handlers/blocked.handler");
+const { handleSmallTalk } = require("../query-answer/handlers/smallTalk.responder");
 const { answerWithRag } = require("../query-answer/rag/ragAnswer");
 const { logger } = require("../utils/logger");
+const { th } = require("framer-motion/client");
 
 const SAFE_REFUSAL = "I don’t have verified trainer data for this yet.";
 
-const VALID_ROUTES = ["small_talk", "medical", "app_query", "rag", "unknown"];
+const VALID_ROUTES = ["small_talk", "app_query", "rag", "unknown"];
 const VALID_DOMAINS = ["training", "nutrition", "lifestyle"];
 
 function safeUnknown() {
@@ -24,7 +27,13 @@ async function getRagAnswer(input) {
   const { query } = normalizeInput(input);
   if (!query) throw new Error("Query is required");
 
-  const { route, domain, answer } = await routeWithLLM(query);
+  const safety = await medicalSafetyFirewall(query);
+  if (safety.blocked) {
+    logger.warn(`[SAFETY] Blocked medical query`, safety);
+    return handleBlockedQuery(query);
+  }
+
+  const { route, domain } = await routeWithLLM(query);
 
   if (typeof route !== "string" || 
     !VALID_ROUTES.includes(route) ||
@@ -38,16 +47,7 @@ async function getRagAnswer(input) {
 
   switch (route) {
     case "small_talk":
-      return {
-        ok: true,
-        mode: "small-talk",
-        answer: answer ?? "Hello!",
-        contextCount: 0,
-        sources: [],
-      };
-
-    case "medical":
-      return handleBlockedQuery(query);
+      return handleSmallTalk();
 
     case "app_query":
       return {
@@ -57,9 +57,15 @@ async function getRagAnswer(input) {
       };
 
     case "rag":
-      return answerWithRag(query, domain);
+      try {
+        return await answerWithRag(query, domain);
+      } catch (err) {
+        logger.error("Error in RAG answer generation", err);
+        throw err;
+      }
 
     case "unknown":
+    default:
       return safeUnknown();
   }
 }

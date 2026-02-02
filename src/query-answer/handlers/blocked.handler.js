@@ -1,11 +1,12 @@
 // src/query-answer/handlers/blocked.handler.js
 
+const SAFE_REFUSAL = "I don’t have verified trainer data for this yet.";
+
 async function handleBlockedQuery() {
   return {
     ok: false,
-    mode: "blocked",
-    answer:
-      "I’m not able to help with medical or self-harm related requests. Please consult a qualified professional.",
+    mode: "unknown",
+    answer: SAFE_REFUSAL,
     contextCount: 0,
     sources: [],
   };
