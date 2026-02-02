@@ -184,12 +184,12 @@ async function answerWithRag(query, domain) {
       }),
       timeoutPromise(7000),
     ]);
-    
+
     if (completion && completion._fallback) {
       logger.error("[RAG] OpenAI fallback detected — escalating to server error");
       throw new Error("OPENAI_FATAL");
     }
-  } catch (err) {
+  } catch (err) { 
     if (err.message.startsWith("TIMEOUT_")) {
       logger.warn("OpenAI timed out at 7s, returning safe fallback");
       completion = {
