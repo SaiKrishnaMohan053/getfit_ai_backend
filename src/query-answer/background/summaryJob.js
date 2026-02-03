@@ -7,6 +7,6 @@ async function enqueueSummaryJob({ type, domain }) {
     taskType: type,
     payload: { domain },
   });
-}
+} 
 
 module.exports = { enqueueSummaryJob };
