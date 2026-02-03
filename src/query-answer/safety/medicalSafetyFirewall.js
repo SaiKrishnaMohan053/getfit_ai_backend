@@ -62,6 +62,19 @@ const KEYWORD_GROUPS = {
   ],
 };
 
+const MEDICAL_CONDITIONS = [
+  "diabetes",
+  "diabetic",
+  "hypertension",
+  "blood pressure",
+  "heart condition",
+  "cardiac",
+  "asthma",
+  "thyroid",
+  "cholesterol",
+  "pcos",
+];
+
 /**
  * --------------------------------
  * Layer 3: Pattern heuristics (CONTEXTUAL)
@@ -150,6 +163,17 @@ async function medicalSafetyFirewall(query) {
           matched: word,
         };
       }
+    }
+  }
+
+  for (const Keyword of MEDICAL_CONDITIONS) {
+    if (text.includes(Keyword)) {
+      return {
+        blocked: true,
+        category: "medical-condition",
+        layer: 2,
+        matched: Keyword,
+      };
     }
   }
 
