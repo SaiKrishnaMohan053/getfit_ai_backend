@@ -4,12 +4,10 @@ const { safeChatCompletion } = require("../../utils/openaiSafeWrap");
 
 /**
  * --------------------------------
- * Layer 1: Exact phrases (HIGH confidence)
+ * Layer 1: Exact phrases (HARD BLOCK)
  * --------------------------------
- * If these appear → immediate block
  */
 const EXACT_PHRASES = [
-  // self-harm / suicide
   "kill myself",
   "end my life",
   "want to die",
@@ -19,7 +17,6 @@ const EXACT_PHRASES = [
   "cut myself",
   "overdose",
 
-  // medication / treatment
   "what pills should i take",
   "should i take medication",
   "need antidepressants",
@@ -28,17 +25,11 @@ const EXACT_PHRASES = [
 
 /**
  * --------------------------------
- * Layer 2: Keyword groups (MEDIUM confidence)
+ * Layer 2: Keyword groups
  * --------------------------------
  */
 const KEYWORD_GROUPS = {
-  self_harm: [
-    "suicide",
-    "suicidal",
-    "self-harm",
-    "harm myself",
-    "die",
-  ],
+  self_harm: ["suicide", "suicidal", "harm myself", "die"],
   medication: [
     "pills",
     "medication",
@@ -48,20 +39,13 @@ const KEYWORD_GROUPS = {
     "antidepressant",
     "steroid",
   ],
-  medical: [
-    "diagnosis",
-    "disease",
-    "condition",
-    "injury",
-    "pain",
-    "rehab",
-    "treatment",
-    "therapy",
-    "doctor",
-    "hospital",
-  ],
 };
 
+/**
+ * --------------------------------
+ * Medical context (NOT authority)
+ * --------------------------------
+ */
 const MEDICAL_CONDITIONS = [
   "diabetes",
   "diabetic",
@@ -73,41 +57,47 @@ const MEDICAL_CONDITIONS = [
   "thyroid",
   "cholesterol",
   "pcos",
+  "pain",
+  "injury",
+  "hurt",
+  "sore",
+  "knees",
+  "back pain",
 ];
 
 /**
  * --------------------------------
- * Layer 3: Pattern heuristics (CONTEXTUAL)
+ * Layer 3: Authority patterns
  * --------------------------------
- * Looks for question-style medical intent
  */
-const PATTERNS = [
+const AUTHORITY_PATTERNS = [
   /should i .* take/i,
   /can i .* take/i,
   /how much .* take/i,
   /what medicine/i,
   /how to treat/i,
+  /how to cure/i,
   /how to recover/i,
-  /is this injury/i,
   /do i have/i,
 ];
 
 /**
  * --------------------------------
- * Layer 4: Optional LLM binary check
+ * Layer 4: LLM backstop (authority only)
  * --------------------------------
- * Used ONLY if earlier layers are unsure
  */
-async function llmMedicalCheck(query) {
+async function llmMedicalAuthorityCheck(query) {
   const prompt = `
 Answer ONLY yes or no.
 
-Is the following user message asking about:
-- self-harm
-- suicide
+Is the user asking for:
 - medical diagnosis
 - medication
-- treatment or therapy
+- dosage
+- treatment
+- cure
+- therapy
+(not fitness or exercise relief)
 
 Message:
 "${query}"
@@ -127,81 +117,109 @@ Message:
 
     return text === "yes";
   } catch {
-    // Fail closed if LLM fails
-    return true;
+    // FAIL OPEN (important)
+    return false;
   }
 }
 
 /**
  * --------------------------------
- * Main Firewall Function
+ * MAIN FIREWALL
  * --------------------------------
  */
 async function medicalSafetyFirewall(query) {
   const text = query.toLowerCase();
 
-  // -------- Layer 1: Exact phrases --------
+  // Layer 1: Exact phrases → hard block
   for (const phrase of EXACT_PHRASES) {
     if (text.includes(phrase)) {
       return {
         blocked: true,
-        category: "high-risk",
+        authorityIntent: true,
+        medicalContext: true,
+        allowRelief: false,
         layer: 1,
         matched: phrase,
       };
     }
   }
 
-  // -------- Layer 2: Keyword groups --------
-  for (const [category, words] of Object.entries(KEYWORD_GROUPS)) {
-    for (const word of words) {
-      if (text.includes(word)) {
-        return {
-          blocked: true,
-          category,
-          layer: 2,
-          matched: word,
-        };
-      }
-    }
-  }
-
-  for (const Keyword of MEDICAL_CONDITIONS) {
-    if (text.includes(Keyword)) {
+  // Layer 2a: Medication keywords → block
+  for (const word of KEYWORD_GROUPS.medication) {
+    if (text.includes(word)) {
       return {
         blocked: true,
-        category: "medical-condition",
+        authorityIntent: true,
+        medicalContext: true,
+        allowRelief: false,
         layer: 2,
-        matched: Keyword,
+        matched: word,
       };
     }
   }
 
-  // -------- Layer 3: Pattern heuristics --------
-  for (const pattern of PATTERNS) {
+  // Layer 2b: Self-harm keywords → block
+  for (const word of KEYWORD_GROUPS.self_harm) {
+    if (text.includes(word)) {
+      return {
+        blocked: true,
+        authorityIntent: true,
+        medicalContext: true,
+        allowRelief: false,
+        layer: 2,
+        matched: word,
+      };
+    }
+  }
+
+  // Layer 2c: Medical context → allow relief
+  for (const condition of MEDICAL_CONDITIONS) {
+    if (text.includes(condition)) {
+      return {
+        blocked: false,
+        authorityIntent: false,
+        medicalContext: true,
+        allowRelief: true,
+        layer: 2,
+        matched: condition,
+      };
+    }
+  }
+
+  // Layer 3: Authority patterns → block
+  for (const pattern of AUTHORITY_PATTERNS) {
     if (pattern.test(query)) {
       return {
         blocked: true,
-        category: "contextual-medical",
+        authorityIntent: true,
+        medicalContext: true,
+        allowRelief: false,
         layer: 3,
         matched: pattern.toString(),
       };
     }
   }
 
-  // -------- Layer 4: LLM backstop (ONLY if unsure) --------
-  const llmSaysMedical = await llmMedicalCheck(query);
-  if (llmSaysMedical) {
+  // Layer 4: LLM authority backstop
+  const isAuthority = await llmMedicalAuthorityCheck(query);
+  if (isAuthority) {
     return {
       blocked: true,
-      category: "llm-backstop",
+      authorityIntent: true,
+      medicalContext: true,
+      allowRelief: false,
       layer: 4,
       matched: "llm_yes",
     };
   }
 
-  // -------- Safe --------
-  return { blocked: false };
+  // Safe
+  return {
+    blocked: false,
+    authorityIntent: false,
+    medicalContext: false,
+    allowRelief: true,
+  };
 }
 
 module.exports = { medicalSafetyFirewall };
