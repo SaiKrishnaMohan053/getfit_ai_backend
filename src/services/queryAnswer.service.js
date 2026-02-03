@@ -6,7 +6,6 @@ const { handleBlockedQuery } = require("../query-answer/handlers/blocked.handler
 const { handleSmallTalk } = require("../query-answer/handlers/smallTalk.responder");
 const { answerWithRag } = require("../query-answer/rag/ragAnswer");
 const { logger } = require("../utils/logger");
-const { th } = require("framer-motion/client");
 
 const SAFE_REFUSAL = "I don’t have verified trainer data for this yet.";
 
