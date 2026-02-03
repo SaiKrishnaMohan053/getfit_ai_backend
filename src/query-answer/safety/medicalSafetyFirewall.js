@@ -1,13 +1,23 @@
-// src/query-answer/safety/medicalSafetyFirewall.js
-
 const { safeChatCompletion } = require("../../utils/openaiSafeWrap");
 
 /**
+ * =========================================================
+ * MEDICAL SAFETY FIREWALL
+ *
+ * Goal:
+ * - HARD BLOCK: self-harm, medication, diagnosis, cure, treatment authority
+ * - ALLOW: non-medical fitness / lifestyle / relief-based guidance
+ * - NEVER behave like a doctor
+ * =========================================================
+ */
+
+/**
  * --------------------------------
- * Layer 1: Exact phrases (HARD BLOCK)
+ * Layer 1: Exact hard-block phrases
  * --------------------------------
  */
 const EXACT_PHRASES = [
+  // self-harm
   "kill myself",
   "end my life",
   "want to die",
@@ -17,6 +27,7 @@ const EXACT_PHRASES = [
   "cut myself",
   "overdose",
 
+  // medication authority
   "what pills should i take",
   "should i take medication",
   "need antidepressants",
@@ -25,11 +36,16 @@ const EXACT_PHRASES = [
 
 /**
  * --------------------------------
- * Layer 2: Keyword groups
+ * Layer 2: Keyword-based hard blocks
  * --------------------------------
  */
 const KEYWORD_GROUPS = {
-  self_harm: ["suicide", "suicidal", "harm myself", "die"],
+  self_harm: [
+    "suicide",
+    "suicidal",
+    "harm myself",
+    "die",
+  ],
   medication: [
     "pills",
     "medication",
@@ -43,31 +59,8 @@ const KEYWORD_GROUPS = {
 
 /**
  * --------------------------------
- * Medical context (NOT authority)
- * --------------------------------
- */
-const MEDICAL_CONDITIONS = [
-  "diabetes",
-  "diabetic",
-  "hypertension",
-  "blood pressure",
-  "heart condition",
-  "cardiac",
-  "asthma",
-  "thyroid",
-  "cholesterol",
-  "pcos",
-  "pain",
-  "injury",
-  "hurt",
-  "sore",
-  "knees",
-  "back pain",
-];
-
-/**
- * --------------------------------
- * Layer 3: Authority patterns
+ * Layer 3: Medical AUTHORITY patterns
+ * These imply doctor-level intent
  * --------------------------------
  */
 const AUTHORITY_PATTERNS = [
@@ -79,11 +72,13 @@ const AUTHORITY_PATTERNS = [
   /how to cure/i,
   /how to recover/i,
   /do i have/i,
+  /is this serious/i,
 ];
 
 /**
  * --------------------------------
- * Layer 4: LLM backstop (authority only)
+ * Layer 4: LLM authority backstop
+ * Used ONLY when patterns are unclear
  * --------------------------------
  */
 async function llmMedicalAuthorityCheck(query) {
@@ -97,7 +92,12 @@ Is the user asking for:
 - treatment
 - cure
 - therapy
-(not fitness or exercise relief)
+
+Exclude:
+- exercise
+- movement
+- lifestyle advice
+- general fitness relief
 
 Message:
 "${query}"
@@ -117,10 +117,36 @@ Message:
 
     return text === "yes";
   } catch {
-    // FAIL OPEN (important)
+    // FAIL OPEN — never block just because LLM failed
     return false;
   }
 }
+
+/**
+ * --------------------------------
+ * Layer 5: Medical CONTEXT (relief allowed)
+ * --------------------------------
+ */
+const MEDICAL_CONTEXT_KEYWORDS = [
+  "diabetes",
+  "diabetic",
+  "hypertension",
+  "blood pressure",
+  "heart condition",
+  "cardiac",
+  "asthma",
+  "thyroid",
+  "cholesterol",
+  "pcos",
+  "pain",
+  "injury",
+  "hurt",
+  "sore",
+  "knee",
+  "knees",
+  "back pain",
+  "shoulder pain",
+];
 
 /**
  * --------------------------------
@@ -130,7 +156,7 @@ Message:
 async function medicalSafetyFirewall(query) {
   const text = query.toLowerCase();
 
-  // Layer 1: Exact phrases → hard block
+  // -------- Layer 1: Exact hard blocks --------
   for (const phrase of EXACT_PHRASES) {
     if (text.includes(phrase)) {
       return {
@@ -144,7 +170,7 @@ async function medicalSafetyFirewall(query) {
     }
   }
 
-  // Layer 2a: Medication keywords → block
+  // -------- Layer 2a: Medication keywords --------
   for (const word of KEYWORD_GROUPS.medication) {
     if (text.includes(word)) {
       return {
@@ -158,7 +184,7 @@ async function medicalSafetyFirewall(query) {
     }
   }
 
-  // Layer 2b: Self-harm keywords → block
+  // -------- Layer 2b: Self-harm keywords --------
   for (const word of KEYWORD_GROUPS.self_harm) {
     if (text.includes(word)) {
       return {
@@ -172,21 +198,7 @@ async function medicalSafetyFirewall(query) {
     }
   }
 
-  // Layer 2c: Medical context → allow relief
-  for (const condition of MEDICAL_CONDITIONS) {
-    if (text.includes(condition)) {
-      return {
-        blocked: false,
-        authorityIntent: false,
-        medicalContext: true,
-        allowRelief: true,
-        layer: 2,
-        matched: condition,
-      };
-    }
-  }
-
-  // Layer 3: Authority patterns → block
+  // -------- Layer 3: Authority patterns --------
   for (const pattern of AUTHORITY_PATTERNS) {
     if (pattern.test(query)) {
       return {
@@ -200,7 +212,7 @@ async function medicalSafetyFirewall(query) {
     }
   }
 
-  // Layer 4: LLM authority backstop
+  // -------- Layer 4: LLM authority backstop --------
   const isAuthority = await llmMedicalAuthorityCheck(query);
   if (isAuthority) {
     return {
@@ -213,7 +225,21 @@ async function medicalSafetyFirewall(query) {
     };
   }
 
-  // Safe
+  // -------- Layer 5: Medical context → allow relief --------
+  for (const keyword of MEDICAL_CONTEXT_KEYWORDS) {
+    if (text.includes(keyword)) {
+      return {
+        blocked: false,
+        authorityIntent: false,
+        medicalContext: true,
+        allowRelief: true,
+        layer: 5,
+        matched: keyword,
+      };
+    }
+  }
+
+  // -------- Safe (non-medical) --------
   return {
     blocked: false,
     authorityIntent: false,
