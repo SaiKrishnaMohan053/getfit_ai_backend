@@ -268,7 +268,7 @@ async function answerWithRag(query, domain) {
       ok: false,
       mode: "rag-error",
       domain,
-      answer: "Something went wrong while using the trainer library. Please try again later.",
+      answer: "I don’t have verified trainer data for this yet.",
       contextCount: 0,
       sources: [],
     }

@@ -125,7 +125,9 @@ describe("ROUTE: POST /api/query-answer (STRICT v1)", () => {
       .post("/api/query-answer")
       .send({ query: "explain calorie deficit" });
 
-    expect(res.statusCode).toBe(500);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.answer).toBe("I don’t have verified trainer data for this yet.");
   });
 
   it("rejects empty query with 400", async () => {
