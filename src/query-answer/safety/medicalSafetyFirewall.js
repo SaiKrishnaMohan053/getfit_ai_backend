@@ -38,7 +38,7 @@ const SELF_HARM_PHRASES = [
 function extractMedicalSignals(text) {
   return {
     // emergency sensations
-    emergency: /chest pain|shortness of breath|faint|collapse|stroke|heart attack/.test(
+    emergency: /chest pain|pressure in chest|shortness of breath|faint|black(ed)? out|collapse|stroke|heart attack|heart racing|palpitations/.test(
       text
     ),
 
@@ -150,7 +150,7 @@ function decidePolicy({ riskScore, llm }) {
   if (riskScore >= 0.8 && llm.medicalAuthorityRequested) return "BLOCK";
 
   // medium risk but LLM unsure → fail closed
-  if (riskScore >= 0.6 && llm.confidence < 0.6) return "BLOCK";
+  if (riskScore >= 0.7 && llm.confidence < 0.5) return "BLOCK";
 
   // otherwise allow relief-style guidance
   return "ALLOW";
