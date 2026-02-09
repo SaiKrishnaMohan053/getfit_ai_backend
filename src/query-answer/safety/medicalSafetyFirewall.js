@@ -4,30 +4,23 @@ const { safeChatCompletion } = require("../../utils/openaiSafeWrap");
 
 /**
  * =========================================================
- * MEDICAL SAFETY FIREWALL (v2)
+ * MEDICAL SAFETY FIREWALL — PHASE 1 (Production-Safe)
  *
- * Goal:
- * - Layer 1 & 2: deterministic HARD BLOCK (self-harm / meds / diagnosis)
- * - Layer 3: LLM-1 strict intent analysis (medical authority vs relief)
- * - Layer 4: LLM-2 verifier (double-check) → final decision
- *
- * Key rule:
- * - We do NOT block “medical words”.
- * - We block “medical authority / outcomes” (cure, heal, recover fully, fix injury, diagnosis, etc.).
- *
- * Safety posture:
- * - If medical-context exists and LLM analysis is unavailable/uncertain → FAIL CLOSED (block → SAFE_REFUSAL).
- *   Reason: real-world safety > convenience.
+ * Principles:
+ * - Hard block only for self-harm / emergency
+ * - Never block nouns (pill, pain, injury)
+ * - Detect medical AUTHORITY intent, not vocabulary
+ * - LLM = signal, NOT decision-maker
+ * - Deterministic policy engine
+ * - Fail closed when uncertain
  * =========================================================
  */
 
-/**
- * --------------------------------
- * Layer 1: Exact hard-block phrases (HARD BLOCK)
- * --------------------------------
+/* ---------------------------------------------------------
+ * Layer 1: Absolute hard blocks (non-negotiable)
+ * ---------------------------------------------------------
  */
-const EXACT_PHRASES = [
-  // self-harm
+const SELF_HARM_PHRASES = [
   "kill myself",
   "end my life",
   "want to die",
@@ -36,106 +29,60 @@ const EXACT_PHRASES = [
   "self harm",
   "cut myself",
   "overdose",
-
-  // medication authority
-  "what pills should i take",
-  "should i take medication",
-  "need antidepressants",
-  "increase dosage",
 ];
 
-/**
- * --------------------------------
- * Layer 2: Keyword-based hard blocks (HARD BLOCK)
- * --------------------------------
+/* ---------------------------------------------------------
+ * Medical signal extractor (NO blocking here)
+ * ---------------------------------------------------------
  */
-const KEYWORD_GROUPS = {
-  self_harm: ["suicide", "suicidal", "harm myself", "die"],
+function extractMedicalSignals(text) {
+  return {
+    // emergency sensations
+    emergency: /chest pain|shortness of breath|faint|collapse|stroke|heart attack/.test(
+      text
+    ),
 
-  medication: [
-    "pills",
-    "medication",
-    "drug",
-    "dosage",
-    "prescription",
-    "antidepressant",
-    "steroid",
-    "painkiller",
-    "painkillers",
-    "antibiotic",
-    "insulin",
-  ],
+    // symptoms / injury context
+    symptoms: /pain|hurt|sore|swelling|inflammation|numb|tingling|dizzy|cramp/.test(
+      text
+    ),
 
-  diagnosis: [
-    "diagnose",
-    "diagnosis",
-    "can you diagnose",
-    "do i have",
-    "is this serious",
-    "is it serious",
-    "is it arthritis",
-    "arthritis",
-    "tumor",
-    "cancer",
-  ],
-};
+    // medication mention (NOT authority)
+    medicationMention: /pill|pills|dosage|mg|prescription|drug|medication/.test(
+      text
+    ),
 
-/**
- * --------------------------------
- * Medical context signals (NOT an auto-block)
- * If present → run LLM gates
- * --------------------------------
+    // conditions
+    condition: /diabetes|hypertension|blood pressure|asthma|thyroid|pcos|cholesterol/.test(
+      text
+    ),
+
+    // authority / outcome verbs (this matters)
+    authorityVerb: /diagnose|treat|cure|heal|fix|prescribe|recover fully|permanent/.test(
+      text
+    ),
+  };
+}
+
+/* ---------------------------------------------------------
+ * Risk scoring (simple + conservative)
+ * ---------------------------------------------------------
  */
-const MEDICAL_CONTEXT_KEYWORDS = [
-  // conditions
-  "diabetes",
-  "diabetic",
-  "hypertension",
-  "blood pressure",
-  "heart condition",
-  "cardiac",
-  "asthma",
-  "thyroid",
-  "cholesterol",
-  "pcos",
+function calculateRiskScore(signals) {
+  if (signals.emergency) return 1.0;
 
-  // injuries / symptoms
-  "injury",
-  "injured",
-  "hurt",
-  "pain",
-  "sore",
-  "swelling",
-  "inflammation",
-  "sprain",
-  "tear",
-  "fracture",
-  "disc",
-  "sciatica",
-  "arthritis",
-  "cramps",
-  "numbness",
-  "tingling",
+  if (signals.authorityVerb && signals.medicationMention) return 0.9;
+  if (signals.authorityVerb && signals.symptoms) return 0.85;
+  if (signals.condition && signals.authorityVerb) return 0.8;
 
-  // body parts commonly used with injury talk
-  "knee",
-  "knees",
-  "back",
-  "back pain",
-  "shoulder",
-  "shoulder pain",
-  "neck",
-  "neck pain",
-  "hip",
-  "ankle",
-  "wrist",
-  "elbow",
-];
+  if (signals.symptoms || signals.condition) return 0.6;
 
-/**
- * --------------------------------
- * LLM-1: Primary intent analysis
- * --------------------------------
+  return 0.0;
+}
+
+/* ---------------------------------------------------------
+ * LLM: Medical intent signal (not decision)
+ * ---------------------------------------------------------
  */
 async function llmMedicalIntentAnalysis(query) {
   const prompt = `
@@ -143,34 +90,24 @@ You are a safety classifier for a fitness coaching app.
 
 Return ONLY valid JSON. No extra text.
 
-Decide if the user is requesting:
-A) medical authority/outcome (BLOCK)
-B) relief-based / general safe fitness guidance (ALLOW)
+Classify the user intent.
 
-Definitions:
-
-BLOCK if user asks for any of:
-- diagnosis, "do I have X", "is this serious"
-- medication / dosage / supplements as treatment
-- cure / heal / recover fully / fix injury / correct damage / permanently resolve a condition
-- medical treatment plans / rehab like a clinician
+BLOCK if user asks for:
+- diagnosis ("do I have X", "is this serious")
+- medication dosage or treatment
+- curing, healing, fixing injuries or conditions
+- clinical rehab plans
 
 ALLOW if user asks for:
-- safe exercises generally considered safe with a condition (diabetes/BP/etc) WITHOUT cure/diagnosis
-- gentle stretches, mobility drills, low-impact movement for relief
-- lifestyle tips (sleep, stress, daily movement) WITHOUT treatment/diagnosis claims
+- general safe exercises
+- mobility, stretching, recovery habits
+- lifestyle tips without treatment claims
 
-Important nuance:
-Words like "heal" or "fix" can be used in normal training context (e.g., "fix my squat form").
-Only treat them as BLOCK when the user message clearly contains medical context (injury/condition/pain).
-
-Output JSON schema:
+Output JSON:
 {
-  "hasMedicalContext": true|false,
-  "medicalAuthorityOrOutcomeRequested": true|false,
-  "reliefOnly": true|false,
+  "medicalAuthorityRequested": true|false,
   "confidence": 0.0-1.0,
-  "reason": "short reason"
+  "reason": "short"
 }
 
 User message:
@@ -180,277 +117,111 @@ User message:
   const res = await safeChatCompletion({
     model: "gpt-4o-mini",
     temperature: 0,
-    max_tokens: 140,
+    max_tokens: 120,
     messages: [{ role: "user", content: prompt }],
   });
 
   const raw = res?.choices?.[0]?.message?.content?.trim();
-
-  // safeChatCompletion fallback returns "[]"
   if (!raw || raw === "[]") return null;
 
   try {
     const parsed = JSON.parse(raw);
-
-    // normalize + validate shape
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      typeof parsed.confidence !== "number"
-    ) {
-      return null;
-    }
+    if (typeof parsed.confidence !== "number") return null;
 
     return {
-      hasMedicalContext: Boolean(parsed.hasMedicalContext),
-      medicalAuthorityOrOutcomeRequested: Boolean(
-        parsed.medicalAuthorityOrOutcomeRequested
-      ),
-      reliefOnly: Boolean(parsed.reliefOnly),
+      medicalAuthorityRequested: Boolean(parsed.medicalAuthorityRequested),
       confidence: Math.max(0, Math.min(1, parsed.confidence)),
-      reason: typeof parsed.reason === "string" ? parsed.reason : "n/a",
+      reason: parsed.reason || "n/a",
     };
   } catch {
     return null;
   }
 }
 
-/**
- * --------------------------------
- * LLM-2: Verifier / judge
- * Double-check LLM-1’s decision
- * --------------------------------
+/* ---------------------------------------------------------
+ * Policy decision engine (deterministic)
+ * ---------------------------------------------------------
  */
-async function llmMedicalIntentVerify(query, analysis) {
-  const prompt = `
-You are a strict verifier for a fitness coaching app safety gate.
+function decidePolicy({ riskScore, llm }) {
+  // emergency always blocked
+  if (riskScore >= 1.0) return "BLOCK";
 
-Return ONLY valid JSON. No extra text.
+  // high risk authority
+  if (riskScore >= 0.8 && llm.medicalAuthorityRequested) return "BLOCK";
 
-You will be given:
-1) user message
-2) a prior classifier JSON
+  // medium risk but LLM unsure → fail closed
+  if (riskScore >= 0.6 && llm.confidence < 0.6) return "BLOCK";
 
-Your task:
-- If the prior decision is correct, agree=true.
-- If incorrect or unsafe, agree=false and correct it.
-
-Final decisions:
-- "BLOCK" = medical authority/outcome → send to UNKNOWN/SAFE_REFUSAL
-- "ALLOW" = relief-based/general safe fitness guidance
-
-Output JSON schema:
-{
-  "agree": true|false,
-  "finalDecision": "BLOCK"|"ALLOW",
-  "confidence": 0.0-1.0,
-  "reason": "short reason"
+  // otherwise allow relief-style guidance
+  return "ALLOW";
 }
 
-User message:
-"${query}"
-
-Prior classifier JSON:
-${JSON.stringify(analysis)}
-`.trim();
-
-  const res = await safeChatCompletion({
-    model: "gpt-4o-mini",
-    temperature: 0,
-    max_tokens: 140,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const raw = res?.choices?.[0]?.message?.content?.trim();
-  if (!raw || raw === "[]") return null;
-
-  try {
-    const parsed = JSON.parse(raw);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      (parsed.finalDecision !== "BLOCK" && parsed.finalDecision !== "ALLOW") ||
-      typeof parsed.confidence !== "number"
-    ) {
-      return null;
-    }
-
-    return {
-      agree: Boolean(parsed.agree),
-      finalDecision: parsed.finalDecision,
-      confidence: Math.max(0, Math.min(1, parsed.confidence)),
-      reason: typeof parsed.reason === "string" ? parsed.reason : "n/a",
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * --------------------------------
+/* ---------------------------------------------------------
  * MAIN FIREWALL
- * --------------------------------
+ * ---------------------------------------------------------
  */
 async function medicalSafetyFirewall(query) {
   const text = (query || "").toLowerCase();
 
-  // -------- Layer 1: Exact hard blocks --------
-  for (const phrase of EXACT_PHRASES) {
+  // -------- Layer 1: Self-harm hard block --------
+  for (const phrase of SELF_HARM_PHRASES) {
     if (text.includes(phrase)) {
       return {
         blocked: true,
-        category: "hard-block",
-        authorityIntent: true,
-        medicalContext: true,
-        allowRelief: false,
-        layer: 1,
-        matched: phrase,
-      };
-    }
-  }
-
-  // -------- Layer 2: Keyword hard blocks --------
-  for (const word of KEYWORD_GROUPS.medication) {
-    if (text.includes(word)) {
-      return {
-        blocked: true,
-        category: "medication",
-        authorityIntent: true,
-        medicalContext: true,
-        allowRelief: false,
-        layer: 2,
-        matched: word,
-      };
-    }
-  }
-
-  for (const word of KEYWORD_GROUPS.self_harm) {
-    if (text.includes(word)) {
-      return {
-        blocked: true,
         category: "self-harm",
-        authorityIntent: true,
-        medicalContext: true,
-        allowRelief: false,
-        layer: 2,
-        matched: word,
+        layer: 1,
+        reason: phrase,
       };
     }
   }
 
-  for (const word of KEYWORD_GROUPS.diagnosis) {
-    if (text.includes(word)) {
-      return {
-        blocked: true,
-        category: "diagnosis",
-        authorityIntent: true,
-        medicalContext: true,
-        allowRelief: false,
-        layer: 2,
-        matched: word,
-      };
-    }
-  }
+  // -------- Signal extraction --------
+  const signals = extractMedicalSignals(text);
+  const riskScore = calculateRiskScore(signals);
 
-  // -------- Medical context signal (decides whether to run LLM gates) --------
-  const hasMedicalContext = MEDICAL_CONTEXT_KEYWORDS.some((k) =>
-    text.includes(k)
-  );
-
-  // If there's NO medical context at all, do not involve LLM → safe
-  // (prevents false blocks for normal training phrasing like "fix my form")
-  if (!hasMedicalContext) {
+  // No medical risk at all → safe
+  if (riskScore === 0) {
     return {
       blocked: false,
       category: "non-medical",
-      authorityIntent: false,
-      medicalContext: false,
-      allowRelief: true,
       layer: 0,
-      matched: null,
+      allowRelief: true,
     };
   }
 
-  // -------- Layer 3: LLM-1 analysis (STRICT) --------
-  const analysis = await llmMedicalIntentAnalysis(query);
+  // -------- LLM signal --------
+  const llm = await llmMedicalIntentAnalysis(query);
 
-  // If LLM-1 failed → fail closed (safe)
-  if (!analysis) {
+  // LLM failure → fail closed
+  if (!llm) {
     return {
       blocked: true,
-      category: "llm1-failed",
-      authorityIntent: true,
-      medicalContext: true,
-      allowRelief: false,
+      category: "llm-failed",
       layer: 3,
-      matched: "llm1_parse_or_call_failed",
+      reason: "llm_unavailable",
     };
   }
 
-  // If LLM-1 confidence is low → fail closed (safe)
-  if (analysis.confidence < 0.75) {
+  // -------- Policy decision --------
+  const decision = decidePolicy({ riskScore, llm });
+
+  if (decision === "BLOCK") {
     return {
       blocked: true,
-      category: "llm1-low-confidence",
-      authorityIntent: true,
-      medicalContext: true,
-      allowRelief: false,
-      layer: 3,
-      matched: `llm1_conf_${analysis.confidence.toFixed(2)}`,
-    };
-  }
-
-  // -------- Layer 4: LLM-2 verifier --------
-  const verdict = await llmMedicalIntentVerify(query, analysis);
-
-  // If verifier failed → fail closed (safe)
-  if (!verdict) {
-    return {
-      blocked: true,
-      category: "llm2-failed",
-      authorityIntent: true,
-      medicalContext: true,
-      allowRelief: false,
+      category: "medical-authority",
       layer: 4,
-      matched: "llm2_parse_or_call_failed",
+      riskScore,
+      reason: llm.reason,
     };
   }
 
-  // If verifier low confidence → fail closed (safe)
-  if (verdict.confidence < 0.75) {
-    return {
-      blocked: true,
-      category: "llm2-low-confidence",
-      authorityIntent: true,
-      medicalContext: true,
-      allowRelief: false,
-      layer: 4,
-      matched: `llm2_conf_${verdict.confidence.toFixed(2)}`,
-    };
-  }
-
-  // Final decision
-  if (verdict.finalDecision === "BLOCK") {
-    return {
-      blocked: true,
-      category: "medical-authority-or-outcome",
-      authorityIntent: true,
-      medicalContext: true,
-      allowRelief: false,
-      layer: 4,
-      matched: verdict.reason || analysis.reason,
-    };
-  }
-
-  // ALLOW (relief/general safe guidance)
   return {
     blocked: false,
     category: "relief-allowed",
-    authorityIntent: false,
-    medicalContext: true,
-    allowRelief: true,
     layer: 4,
-    matched: verdict.reason || analysis.reason,
+    riskScore,
+    allowRelief: true,
+    reason: llm.reason,
   };
 }
 
