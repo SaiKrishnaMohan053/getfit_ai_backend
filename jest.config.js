@@ -45,5 +45,22 @@ module.exports = {
       moduleNameMapper: {
       },
     },
+
+    // =====================================================================
+    // SECURITY TESTS
+    // - Focus on validation, input sanitization, boundary cases
+    // - Should NOT depend on real external services
+    // - Typically route-level abuse scenarios
+    // =====================================================================
+    {
+      displayName: "security",
+      testEnvironment: "node",
+      testMatch: ["**/tests/**/*.security.test.js"],
+      setupFiles: ["<rootDir>/tests/setup/globalMocks.js"],
+      setupFilesAfterEnv: [
+        "<rootDir>/tests/setup/globalSetup.js"
+      ],
+      moduleNameMapper: {},
+    }
   ],
 };

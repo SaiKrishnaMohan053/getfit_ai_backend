@@ -12,13 +12,10 @@ describe("chunkTagger", () => {
     jest.clearAllMocks();
   });
 
-  test("returns unknown for short chunks without calling OpenAI", async () => {
+  test("returns unknown for junk/short chunks without calling OpenAI", async () => {
     const chunks = ["too short"];
 
-    const res = await tagChunk({
-      chunks,
-      source_file: "x.pdf",
-    });
+    const res = await tagChunk({ chunks, source_file: "x.pdf" });
 
     expect(res).toHaveLength(1);
     expect(res[0].domain).toBe("unknown");
@@ -47,10 +44,9 @@ describe("chunkTagger", () => {
     });
 
     const longChunk = `
-      During the bench press, proper scapular positioning is critical for shoulder safety
-      and force transfer. The lifter should retract and depress the scapula before unracking
-      the bar. This creates a stable base and improves bar path consistency.
-    `.repeat(2);
+      During the bench press, scapular retraction and depression increase stability
+      and reduce anterior shoulder stress. Cue: pin shoulders to the bench.
+    `.repeat(8);
 
     const res = await tagChunk({
       chunks: [longChunk],
@@ -62,6 +58,8 @@ describe("chunkTagger", () => {
     expect(res[0].subdomain).toBe("technique");
     expect(res[0].topics.length).toBeGreaterThan(0);
     expect(res[0].confidence).toBeGreaterThan(0.5);
+
+    expect(safeChatCompletion).toHaveBeenCalledTimes(1);
   });
 
   test("invalid JSON => unknown", async () => {
@@ -69,10 +67,13 @@ describe("chunkTagger", () => {
       choices: [{ message: { content: "not-json" } }],
     });
 
+    const longChunk =
+      "This is a meaningful chunk long enough to call the model and fail parsing. ".repeat(
+        10
+      );
+
     const res = await tagChunk({
-      chunks: [
-        "This is a meaningful chunk long enough to call the model and fail parsing",
-      ],
+      chunks: [longChunk],
       source_file: "book.pdf",
     });
 
@@ -101,10 +102,13 @@ describe("chunkTagger", () => {
       ],
     });
 
+    const longChunk =
+      "Some vague paragraph mentioning protein without actionable coaching detail. ".repeat(
+        10
+      );
+
     const res = await tagChunk({
-      chunks: [
-        "Some vague paragraph mentioning protein without actionable coaching detail",
-      ],
+      chunks: [longChunk],
       source_file: "book.pdf",
     });
 

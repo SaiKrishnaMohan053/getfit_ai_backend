@@ -15,7 +15,7 @@ on:
 jobs:
 
   # ------------------------------------------------------
-  # 1) BUILD + PUSH DOCKER IMAGE
+  # 1) BUILD + PUSH DOCKER IMAGES
   # ------------------------------------------------------
   build_and_push:
     runs-on: ubuntu-latest
@@ -31,42 +31,45 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Check AWS Identity
-        run: aws sts get-caller-identity
-
-      - name: Login to ECR (CLI)
-        id: login_ecr
+      - name: Login to ECR
         run: |
-          REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-          aws ecr get-login-password --region $AWS_REGION \
+          REGISTRY="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com"
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
             | docker login --username AWS --password-stdin $REGISTRY
           echo "REGISTRY=$REGISTRY" >> $GITHUB_ENV
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
-      - name: Build & push Docker image
-        id: build_image
-        env:
-          REGISTRY: ${{ env.REGISTRY }}
-          REPOSITORY: getfit_ai_backend
-          TAG: ${{ github.sha }}
+      # -------------------------
+      # Build Backend Image
+      # -------------------------
+      - name: Build & push Backend image
         run: |
-          IMAGE="$REGISTRY/$REPOSITORY:$TAG"
-          echo "Building image: $IMAGE"
-          docker build -t $IMAGE .
-          docker push $IMAGE
-          echo "$IMAGE" > image.txt
-          echo "Exported image: $IMAGE"
+          BACKEND_IMAGE="$REGISTRY/getfit_ai_backend:${{ github.sha }}"
+          echo "Building $BACKEND_IMAGE"
+          docker build -t $BACKEND_IMAGE .
+          docker push $BACKEND_IMAGE
+          echo "$BACKEND_IMAGE" > backend_image.txt
 
-      - name: Upload image artifact
+      # -------------------------
+      # Build Diagram Image
+      # -------------------------
+      - name: Build & push Diagram image
+        run: |
+          DIAGRAM_IMAGE="$REGISTRY/getfit_ai_diagram:${{ github.sha }}"
+          echo "Building $DIAGRAM_IMAGE"
+          docker build -t $DIAGRAM_IMAGE ./src/diagram-service
+          docker push $DIAGRAM_IMAGE
+          echo "$DIAGRAM_IMAGE" > diagram_image.txt
+
+      - name: Upload built image artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: built-image
-          path: image.txt
+          name: built-images
+          path: |
+            backend_image.txt
+            diagram_image.txt
 
   # ------------------------------------------------------
-  # 2) DEPLOY TO ECS USING SAVED IMAGE
+  # 2) DEPLOY TO ECS USING BUILT IMAGES
   # ------------------------------------------------------
   deploy_staging:
     needs: build_and_push
@@ -83,30 +86,45 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Download image artifact
+      - name: Download image artifacts
         uses: actions/download-artifact@v4
         with:
-          name: built-image
+          name: built-images
 
-      - name: Read image from artifact
-        id: read_image
+      - name: Read image URIs
+        id: read_images
         run: |
-          IMAGE=$(cat image.txt)
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
-          echo "Using image: $IMAGE"
+          BACKEND_IMAGE=$(cat backend_image.txt)
+          DIAGRAM_IMAGE=$(cat diagram_image.txt)
+          echo "backend_image=$BACKEND_IMAGE" >> $GITHUB_OUTPUT
+          echo "diagram_image=$DIAGRAM_IMAGE" >> $GITHUB_OUTPUT
 
-      - name: Render ECS task definition
-        id: render_taskdef
+      # -------------------------
+      # Update backend container
+      # -------------------------
+      - name: Render ECS task definition (backend)
+        id: render_backend
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: infra/ecs/taskdef.staging.json
           container-name: backend
-          image: ${{ steps.read_image.outputs.image }}
+          image: ${{ steps.read_images.outputs.backend_image }}
+
+      # -------------------------
+      # Update diagram container
+      # -------------------------
+      - name: Render ECS task definition (diagram)
+        id: render_diagram
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ steps.render_backend.outputs.task-definition }}
+          container-name: diagram-service
+          image: ${{ steps.read_images.outputs.diagram_image }}
 
       - name: Deploy ECS service (staging)
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition: ${{ steps.render_taskdef.outputs.task-definition }}
+          task-definition: ${{ steps.render_diagram.outputs.task-definition }}
           cluster: ${{ secrets.ECS_CLUSTER_STAGING }}
           service: ${{ secrets.ECS_SERVICE_STAGING }}
           wait-for-service-stability: true

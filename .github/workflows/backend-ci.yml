@@ -68,6 +68,9 @@ jobs:
       - name: Run Integration Tests
         run: ./scripts/run-integration-tests.sh
 
+      - name: Run Security Tests
+        run: ./scripts/run-security-tests.sh
+
       - name: Baseline Freeze Check
         run: node ./scripts/compare-baseline.mjs
 

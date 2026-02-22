@@ -5,8 +5,8 @@
 
   "requiresCompatibilities": ["FARGATE"],
 
-  "cpu": "1024",
-  "memory": "2048",
+  "cpu": "2048",
+  "memory": "4096",
 
   "executionRoleArn": "arn:aws:iam::879519940213:role/ecsTaskExecutionRole",
   "taskRoleArn": "arn:aws:iam::879519940213:role/getfit-ai-taskRole",
@@ -22,7 +22,6 @@
       "portMappings": [
         {
           "containerPort": 8080,
-          "hostPort": 8080,
           "protocol": "tcp"
         }
       ],
@@ -71,6 +70,41 @@
           "awslogs-group": "/ecs/getfit-backend-task",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "backend"
+        }
+      }
+    },
+    {
+      "name": "diagram-service",
+      "image": "879519940213.dkr.ecr.us-east-1.amazonaws.com/getfit_ai_diagram:IMAGE_TAG",
+      "essential": false,
+
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+
+      "environment": [
+        { "name": "DIAGRAM_SERVICE_URL", "value": "http://localhost:8000" },
+        { "name": "AWS_REGION", "value": "us-east-1" },
+        { "name": "AWS_TRAINING_BUCKET", "value": "getfit-ai-training-pdfs" }
+      ],
+
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 20
+      },
+
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/getfit-backend-task",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "diagram"
         }
       }
     }
