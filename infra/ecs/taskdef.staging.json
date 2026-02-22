@@ -33,6 +33,7 @@
         { "name": "ENABLE_METRICS", "value": "true" },
         { "name": "ENABLE_BACKGROUND_JOBS", "value": "true" },
 
+        { "name": "DIAGRAM_SERVICE_URL", "value": "http://localhost:8000" },
         { "name": "QDRANT_COLLECTION", "value": "ecs_test" },
 
         { "name": "AWS_REGION", "value": "us-east-1" },
