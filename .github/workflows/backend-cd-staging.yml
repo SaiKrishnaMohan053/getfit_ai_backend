@@ -12,7 +12,7 @@ on:
       - "infra/ecs/**"
       - "scripts/**"
 
-jobs:
+jobs: 
 
   # ------------------------------------------------------
   # 1) BUILD + PUSH DOCKER IMAGES
