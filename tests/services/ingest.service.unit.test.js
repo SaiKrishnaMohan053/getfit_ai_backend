@@ -53,7 +53,12 @@ jest.mock("../../src/config/prometheusMetrics", () => ({
   qdrantLatency: { observe: jest.fn() },
 }));
 
+jest.mock("../../src/models/ingestion.model", () => ({
+  findOneAndUpdate: jest.fn(),
+}));
+
 const fs = require("fs");
+const Ingestion = require("../../src/models/ingestion.model");
 const { extractPdfStructure } = require("../../src/services/extractPdfStructure.service");
 const { buildPageIndex } = require("../../src/services/pageIndexBuilder.service");
 const { chunkText } = require("../../src/utils/chunker");
@@ -66,10 +71,13 @@ const { trainDocument } = require("../../src/services/ingest.service");
 
 jest.setTimeout(20000);
 
-describe("SERVICE: trainDocument (page-index + diagrams)", () => {
+describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
+  const file_hash = "filehash123";
+
   beforeEach(() => {
     jest.clearAllMocks();
     fs.readFileSync.mockReturnValue(Buffer.from("mock pdf bytes"));
+    Ingestion.findOneAndUpdate.mockResolvedValue({});
   });
 
   it("throws when extractPdfStructure returns no pages", async () => {
@@ -80,6 +88,7 @@ describe("SERVICE: trainDocument (page-index + diagrams)", () => {
         pdfPath: "/tmp/empty.pdf",
         domain: "training",
         source_file: "empty.pdf",
+        file_hash,
       })
     ).rejects.toThrow("No pages extracted from PDF");
 
@@ -90,11 +99,10 @@ describe("SERVICE: trainDocument (page-index + diagrams)", () => {
     extractPdfStructure.mockResolvedValue({
       pages: [
         { page_number: 1, text_blocks: [], diagrams: [] },
-        { page_number: 2, text_blocks: [{ text: "Hi" }], diagrams: [] }, // too short
+        { page_number: 2, text_blocks: [{ text: "Hi" }], diagrams: [] },
       ],
     });
 
-    // these should never be called
     buildPageIndex.mockResolvedValue({
       page_title: "x",
       page_summary: "y",
@@ -106,16 +114,25 @@ describe("SERVICE: trainDocument (page-index + diagrams)", () => {
       domain: "training",
       source_file: "skip.pdf",
       version_tag: "v1",
+      file_hash,
     });
 
-    // no upserts because no valid pages
     expect(qdrantClient.upsert).toHaveBeenCalledTimes(0);
     expect(result.ok).toBe(true);
     expect(result.inserted).toBe(0);
     expect(result.embedded).toBe(0);
+
+    expect(Ingestion.findOneAndUpdate).toHaveBeenCalledWith(
+      { file_hash },
+      { $set: { last_processed_page: 1, total_pages: 2 } }
+    );
+    expect(Ingestion.findOneAndUpdate).toHaveBeenCalledWith(
+      { file_hash },
+      { $set: { last_processed_page: 2, total_pages: 2 } }
+    );
   });
 
-  it("ingests one page: page_index + text_chunks + diagram_chunks", async () => {
+  it("ingests one page with deterministic Qdrant IDs", async () => {
     extractPdfStructure.mockResolvedValue({
       pages: [
         {
@@ -141,20 +158,27 @@ describe("SERVICE: trainDocument (page-index + diagrams)", () => {
     chunkText.mockReturnValue(["chunk one", "chunk two"]);
 
     tagChunk.mockResolvedValue([
-      { domain: "training", subdomain: "technique", topics: ["bench"], confidence: 0.9, reasons: "ok" },
-      { domain: "training", subdomain: "technique", topics: ["scapula"], confidence: 0.9, reasons: "ok" },
+      {
+        domain: "training",
+        subdomain: "technique",
+        topics: ["bench"],
+        confidence: 0.9,
+        reasons: "ok",
+      },
+      {
+        domain: "training",
+        subdomain: "technique",
+        topics: ["scapula"],
+        confidence: 0.9,
+        reasons: "ok",
+      },
     ]);
 
-    // embedText called multiple times:
-    // 1) page index
-    // 2) text chunks batch
-    // 3) diagram d1
-    // 4) diagram d2
     embedText
-      .mockResolvedValueOnce([[0.01, 0.02]]) // page_index vector
-      .mockResolvedValueOnce([[0.1, 0.2], [0.3, 0.4]]) // text chunk vectors
-      .mockResolvedValueOnce([[0.9, 0.9]]) // diagram 1 vector
-      .mockResolvedValueOnce([[0.8, 0.8]]); // diagram 2 vector
+      .mockResolvedValueOnce([[0.01, 0.02]]) // page index
+      .mockResolvedValueOnce([[0.1, 0.2], [0.3, 0.4]]) // text chunks
+      .mockResolvedValueOnce([[0.9, 0.9]]) // diagram 1
+      .mockResolvedValueOnce([[0.8, 0.8]]); // diagram 2
 
     qdrantClient.upsert.mockResolvedValue({ ok: true });
 
@@ -163,28 +187,112 @@ describe("SERVICE: trainDocument (page-index + diagrams)", () => {
       domain: "training",
       source_file: "onepage.pdf",
       version_tag: "v1",
+      file_hash,
     });
 
-    // Upsert count:
-    // - page_index: 1 call
-    // - text_chunks: 1 call
-    // - diagrams: 2 calls
     expect(qdrantClient.upsert).toHaveBeenCalledTimes(4);
 
-    // Result summary
+    // page index deterministic id
+    expect(qdrantClient.upsert.mock.calls[0][1].points[0].id).toBe(
+      `${file_hash}:p1:index`
+    );
+
+    // text chunk deterministic ids
+    const textPoints = qdrantClient.upsert.mock.calls[1][1].points;
+    expect(textPoints[0].id).toBe(`${file_hash}:p1:c0`);
+    expect(textPoints[1].id).toBe(`${file_hash}:p1:c1`);
+
+    // diagram deterministic ids
+    expect(qdrantClient.upsert.mock.calls[2][1].points[0].id).toBe(
+      `${file_hash}:p1:dd1`
+    );
+    expect(qdrantClient.upsert.mock.calls[3][1].points[0].id).toBe(
+      `${file_hash}:p1:dd2`
+    );
+
     expect(result.ok).toBe(true);
     expect(result.source_file).toBe("onepage.pdf");
     expect(result.domain).toBe("training");
     expect(result.collection).toBe("test_collection");
-
-    // inserted points: 1 (index) + 2 (text chunks) + 2 (diagrams) = 5
     expect(result.inserted).toBe(5);
+    expect(result.embedded).toBe(5);
 
-    // embedded: index (1) + chunks (2) + diagrams (2) = 5
-    expect(result.embedded).toBe(4);
+    expect(Ingestion.findOneAndUpdate).toHaveBeenCalledWith(
+      { file_hash },
+      { $set: { last_processed_page: 1, total_pages: 1 } }
+    );
   });
 
-  it("retries diagram upsert on failure once then succeeds", async () => {
+  it("resumes from startPage instead of reprocessing from page 1", async () => {
+    extractPdfStructure.mockResolvedValue({
+      pages: [
+        {
+          page_number: 1,
+          text_blocks: [{
+            text: "Page 1 has enough text too, but it should be skipped because startPage is set to 2 in this test case."
+          }],
+          diagrams: [],
+        },
+        {
+          page_number: 2,
+          text_blocks: [{
+            text: "Page 2 has enough text to process because this sentence is definitely longer than fifty characters."
+          }],
+          diagrams: [],
+        },
+      ],
+    });
+
+    buildPageIndex.mockResolvedValue({
+      page_title: "Title",
+      page_summary: "Summary",
+      page_topics: [],
+    });
+
+    chunkText.mockReturnValue(["chunk p2"]);
+    tagChunk.mockResolvedValue([
+      {
+        domain: "training",
+        subdomain: "technique",
+        topics: ["bench"],
+        confidence: 0.9,
+        reasons: "ok",
+      },
+    ]);
+
+    embedText
+      .mockResolvedValueOnce([[0.01]]) // page 2 index
+      .mockResolvedValueOnce([[0.2]]); // page 2 chunk
+
+    qdrantClient.upsert.mockResolvedValue({ ok: true });
+
+    const result = await trainDocument({
+      pdfPath: "/tmp/resume.pdf",
+      domain: "training",
+      source_file: "resume.pdf",
+      file_hash,
+      startPage: 2,
+    });
+
+    expect(result.ok).toBe(true);
+
+    // only page 2 index + page 2 text batch
+    expect(qdrantClient.upsert).toHaveBeenCalledTimes(2);
+
+    expect(qdrantClient.upsert.mock.calls[0][1].points[0].id).toBe(
+      `${file_hash}:p2:index`
+    );
+    expect(qdrantClient.upsert.mock.calls[1][1].points[0].id).toBe(
+      `${file_hash}:p2:c0`
+    );
+
+    expect(Ingestion.findOneAndUpdate).toHaveBeenCalledWith(
+      { file_hash },
+      { $set: { last_processed_page: 2, total_pages: 2 } }
+    );
+  });
+
+  it("retries diagram upsert once before succeeding", async () => {
     extractPdfStructure.mockResolvedValue({
       pages: [
         {
@@ -201,59 +309,25 @@ describe("SERVICE: trainDocument (page-index + diagrams)", () => {
       page_topics: [],
     });
 
-    chunkText.mockReturnValue([]); // no text chunks
+    chunkText.mockReturnValue([]);
     embedText
       .mockResolvedValueOnce([[0.01]]) // index
       .mockResolvedValueOnce([[0.99]]); // diagram
 
-    // 1) index upsert succeeds
-    // 2) diagram upsert fails once then succeeds
     qdrantClient.upsert
-      .mockResolvedValueOnce({ ok: true })
-      .mockRejectedValueOnce(new Error("temporary qdrant issue"))
-      .mockResolvedValueOnce({ ok: true });
+      .mockResolvedValueOnce({ ok: true }) // index upsert
+      .mockRejectedValueOnce(new Error("temporary qdrant issue")) // diagram fail
+      .mockResolvedValueOnce({ ok: true }); // diagram retry success
 
     const result = await trainDocument({
       pdfPath: "/tmp/retry-diagram.pdf",
       domain: "training",
       source_file: "retry-diagram.pdf",
+      file_hash,
     });
 
     expect(qdrantClient.upsert).toHaveBeenCalledTimes(3);
-    expect(logger.warn).toHaveBeenCalled(); // retry warning
+    expect(logger.warn).toHaveBeenCalled();
     expect(result.ok).toBe(true);
-  });
-
-  it("continues gracefully if qdrant upsert keeps failing", async () => {
-    extractPdfStructure.mockResolvedValue({
-      pages: [
-        {
-          page_number: 1,
-          text_blocks: [{ text: "This is enough text for indexing." }],
-          diagrams: [],
-        },
-      ],
-    });
-
-    buildPageIndex.mockResolvedValue({
-      page_title: "Title",
-      page_summary: "Summary",
-      page_topics: [],
-    });
-
-    embedText.mockResolvedValueOnce([[0.01]]);
-
-    // index upsert fails always
-    qdrantClient.upsert.mockRejectedValue(new Error("Qdrant upsert failed"));
-
-    const result = await trainDocument({
-      pdfPath: "/tmp/fail.pdf",
-      domain: "training",
-      source_file: "fail.pdf",
-    });
-
-    expect(result.ok).toBe(true);
-    expect(result.inserted).toBe(0);
-    expect(result.embedded).toBe(0);
   });
 });

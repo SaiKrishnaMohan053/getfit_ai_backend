@@ -1,7 +1,7 @@
 // src/routes/delete.routes.js
 
 const express = require("express");
-const { deleteBySource } = require("../services/delete.service");
+const { deleteBySource, deleteVectors } = require("../services/delete.service");
 
 const router = express.Router();
 
@@ -16,13 +16,13 @@ const router = express.Router();
  */
 router.delete("/", async (req, res, next) => {
   try {
-    const { source_file } = req.body;
+    const { source_file, file_hash } = req.body;
 
-    if (!source_file || typeof source_file !== "string") {
-      return res.status(400).json({ error: "source_file is required" });
+    if ((!source_file || typeof source_file !== "string") && (!file_hash || typeof file_hash !== "string")) {
+      return res.status(400).json({ error: "source_file or file_hash is required" });
     }
 
-    const result = await deleteBySource(source_file);
+    const result = await deleteVectors({ source_file, file_hash });
 
     return res.json(result);
   } catch (err) {

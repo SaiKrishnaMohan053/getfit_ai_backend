@@ -10,4 +10,5 @@ beforeAll(async () => {
 
 afterAll(async () => {
   console.log("Tests finished (Phase 1).");
+  jest.clearAllTimers();
 });

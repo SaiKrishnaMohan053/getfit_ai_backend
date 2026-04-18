@@ -5,14 +5,21 @@ const { logger } = require("./utils/logger");
 
 require("./config/redisClient");
 
-logger.info("Starting BullMQ worker");
-const { startAiWorker } = require("./config/aiQueue");
-startAiWorker();
+const { connectMongo } = require("./config/mongoClient");
+(async () => {
+  await connectMongo();
 
-const app = require("./app");
+  logger.info("Starting BullMQ worker");
+  if (process.env.NODE_ENV !== "test") {
+    const { startAiWorker } = require("./config/aiQueue");
+    startAiWorker();
+  }
 
-const PORT = process.env.PORT || 8080;
+  const app = require("./app");
 
-app.listen(PORT, "0.0.0.0", () => {
-  logger.info(`Server listening on port ${PORT}`);
-});
+  const PORT = process.env.PORT || 8080;
+
+  app.listen(PORT, "0.0.0.0", () => {
+    logger.info(`Server listening on port ${PORT}`);
+  });
+})();

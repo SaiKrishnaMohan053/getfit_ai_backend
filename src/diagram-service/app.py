@@ -56,7 +56,7 @@ async def extract_pdf(file: UploadFile):
             base_image = doc.extract_image(xref)
             image_bytes = base_image["image"]
 
-            diagram_id = str(uuid.uuid4())
+            diagram_id = f"p{page_index+1}_x{xref}"
             key = f"diagram-crops/{diagram_id}.png"
 
             s3.put_object(

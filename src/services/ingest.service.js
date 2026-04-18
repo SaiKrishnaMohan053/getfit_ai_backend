@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 
+const Ingestion = require("../models/ingestion.model");
 const { extractPdfStructure } = require("./extractPdfStructure.service");
 const { buildPageIndex } = require("./pageIndexBuilder.service");
 const { chunkText } = require("../utils/chunker");
@@ -38,7 +39,7 @@ async function withRetry(fn, label) {
   }
 }
 
-async function trainDocument({ pdfPath, domain, source_file, version_tag, job }) {
+async function trainDocument({ pdfPath, domain, source_file, version_tag, job, file_hash, startPage = 1 }) {
   const start = Date.now();
 
   const vtag =
@@ -66,6 +67,8 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
       throw new Error("No pages extracted from PDF");
     }
 
+    const total_pages = pages.length;
+
     let totalInserted = 0;
     let totalEmbedded = 0;
 
@@ -75,6 +78,8 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
       const page = pages[p];
       const pageNumber = page.page_number;
 
+      if (pageNumber < startPage) continue;
+
       const pageText = page.text_blocks
         ?.map((b) => b.text)
         .join(" ")
@@ -83,7 +88,13 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
       const hasText = pageText && pageText.length >= 50;
       const hasDiagrams = page.diagrams && page.diagrams.length > 0;
 
-      if (!hasText && !hasDiagrams) continue;
+      if (!hasText && !hasDiagrams) {
+        await Ingestion.findOneAndUpdate(
+          { file_hash },
+          { $set: { last_processed_page: pageNumber, total_pages }}
+        );
+        continue;
+      };
 
       // ----------------------
       // 1️⃣ PAGE INDEX VECTOR
@@ -96,14 +107,19 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
         indexData.page_title + "\n" + indexData.page_summary
       );
 
+      totalEmbedded += indexVector.length;
+
+      const pageIndexId = `${file_hash}:p${pageNumber}:index`;
+
       await qdrantClient.upsert(config.QDRANT_COLLECTION, {
         points: [
           {
-            id: uuidv4(),
+            id: pageIndexId,
             vector: indexVector[0],
             payload: {
               object_type: "page_index",
               source_type: "index",
+              file_hash,
               doc_id,
               book_title,
               category,
@@ -149,6 +165,8 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
         totalEmbedded += vectors.length;
 
         const points = batch.map((chunk, idx) => {
+          const chunkIndex = i + idx;
+          
           const tag = tags[idx] || {
             domain: "unknown",
             subdomain: "unknown",
@@ -158,18 +176,19 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
           };
 
           return {
-            id: uuidv4(),
+            id: `${file_hash}:p${pageNumber}:c${chunkIndex}`,
             vector: vectors[idx],
             payload: {
               object_type: "text_chunk",
               source_type: "text",
               text: chunk,
+              file_hash,
               doc_id,
               book_title,
               category,
               source_file,
               page_number: pageNumber,
-              chunk_index_in_page: i + idx,
+              chunk_index_in_page: chunkIndex,
               domain: tag.domain,
               subdomain: tag.subdomain,
               topics: tag.topics,
@@ -211,11 +230,14 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
       if (page.diagrams && page.diagrams.length > 0) {
 
         for (const diagram of page.diagrams) {
+          const stableDiagramId = diagram.diagram_id;
 
-          const diagramTexts = page.diagrams.map(d => `Diagram ${d.diagram_id} on page ${pageNumber} of ${book_title}`);
-          const diagramVector = await embedText(diagramTexts);
+          const diagramText = `Diagram ${stableDiagramId} on page ${pageNumber} of ${book_title}`;
+          const diagramVector = await embedText([diagramText]);
 
-          totalEmbedded += 1;
+          totalEmbedded += diagramVector.length;
+
+          const diagramPointId = `${file_hash}:p${pageNumber}:d${stableDiagramId}`
 
           await withRetry(async () => {
             const startHr = process.hrtime();
@@ -223,7 +245,7 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
               await qdrantClient.upsert(config.QDRANT_COLLECTION, {
                 points: [
                   {
-                    id: uuidv4(),
+                    id: diagramPointId,
                     vector: diagramVector[0],
                     payload: {
                       object_type: "diagram_chunk",
@@ -233,7 +255,7 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
                       category,
                       source_file,
                       page_number: pageNumber,
-                      diagram_id: diagram.diagram_id,
+                      diagram_id: stableDiagramId,
                       image_s3_url: diagram.image_s3_url,
                       version_tag: vtag,
                       created_at: new Date().toISOString(),
@@ -254,9 +276,14 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
             }
           }, "Upsert diagram");
 
-          totalInserted++;
+          totalInserted += 1;
         }
       }
+
+      await Ingestion.findOneAndUpdate(
+        { file_hash },
+        { $set: { last_processed_page: pageNumber, total_pages }}
+      )
 
       await setProgress(
         Math.floor(((p + 1) / pages.length) * 100),
@@ -266,16 +293,19 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job })
 
     const seconds = ((Date.now() - start) / 1000).toFixed(2);
 
-    logger.info(`Training complete in ${seconds}s`);
+    logger.info(`Training complete in ${seconds}s file_hash=${file_hash}`);
 
     return {
       ok: true,
+      doc_id,
+      file_hash,
       source_file,
       domain,
       version_tag: vtag,
       inserted: totalInserted,
       embedded: totalEmbedded,
       seconds,
+      total_pages,
       collection: config.QDRANT_COLLECTION,
     };
   } catch (err) {

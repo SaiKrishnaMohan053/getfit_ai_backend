@@ -32,6 +32,8 @@ const config = {
   MONGO_URI: process.env.MONGO_URI,
   AWS_REGION: process.env.AWS_REGION || "us-east-1",
   AWS_TRAINING_BUCKET: process.env.AWS_TRAINING_BUCKET || "getfit-ai-training-pdfs",
+
+  DIAGRAM_SERVICE_URL: process.env.DIAGRAM_SERVICE_URL,
 };
 
 /**
@@ -42,6 +44,7 @@ const requiredVars = [
   "QDRANT_URL",
   "OPENAI_API_KEY",
   "AWS_TRAINING_BUCKET",
+  "DIAGRAM_SERVICE_URL",
 ];
 
 for (const key of requiredVars) {

@@ -29,6 +29,7 @@
       "environment": [
         { "name": "NODE_ENV", "value": "production" },
         { "name": "PORT", "value": "8080" },
+        { "name": "MONGO_URI", "value": "mongodb+srv://saikrishnamohan_k:123456789@Mo@rag-data.dleo34f.mongodb.net/?appName=rag-data" },
 
         { "name": "ENABLE_METRICS", "value": "true" },
         { "name": "ENABLE_BACKGROUND_JOBS", "value": "true" },
@@ -62,6 +63,10 @@
         {
           "name": "REDIS_PASSWORD",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi:REDIS_PASSWORD::"
+        },
+        {
+          "name": "MONGO_URI",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:879519940213:secret:getfit-ai-backend-secrets-LB2bwi:MONGO_URI::"
         }
       ],
 

@@ -33,11 +33,21 @@ jest.mock("../../src/config/qdrantClient", () => ({
   },
 }));
 
+jest.mock("../../src/config/env", () => ({
+  config: {
+    QDRANT_COLLECTION: "test_collection",
+    OPENAI_API_KEY: "test-key",
+    AWS_TRAINING_BUCKET: "test-bucket",
+    DIAGRAM_SERVICE_URL: "http://localhost:8000",
+  },
+}));
+
 const { routeWithLLM } = require("../../src/query-answer/router/llmRouter");
 const queryCache = require("../../src/cache/queryCache");
 const { qdrantClient } = require("../../src/config/qdrantClient");
 const { getRagAnswer } = require("../../src/services/queryAnswer.service");
 const { enqueueSummaryJob } = require("../../src/query-answer/background/summaryJob");
+const { queueAI } = require("../../src/config/queue");
 
 const SAFE_REFUSAL = "I don’t have verified trainer data for this yet.";
 

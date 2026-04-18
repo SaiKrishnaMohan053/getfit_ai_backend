@@ -2,33 +2,26 @@
 
 const express = require("express");
 const multer = require("multer");
+const crypto = require("crypto");
 const { logger } = require("../utils/logger");
 const { queueAI } = require("../config/queue") || {};
 const { uploadPdfToS3 } = require("../utils/s3Upload");
 const { config, isTest } = require("../config/env");
-
-function slugify(filename) {
-  return filename
-    .toLowerCase()
-    .replace(/\.pdf$/, "")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "");
-}
+const Ingestion = require("../models/ingestion.model");
 
 const router = express.Router();
 
-// Store uploaded PDF entirely in memory
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 300 * 1024 * 1024, // 300 MB limit
-  }
+    fileSize: 300 * 1024 * 1024,
+  },
 });
 
-/**
- * POST /api/train
- * Upload a PDF and start ingestion → chunk → embed → upsert.
- */
+function sha256(buf) {
+  return crypto.createHash("sha256").update(buf).digest("hex");
+}
+
 router.post("/", upload.single("pdf"), async (req, res, next) => {
   try {
     const file = req.file;
@@ -42,8 +35,20 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
     }
 
     const cleanDomain = (domain || "general").trim().toLowerCase();
-    const bookSlug = slugify(file.originalname);
-    const jobId = `training:${bookSlug}:${Date.now()}`;
+    const file_hash = sha256(file.buffer);
+
+    // For mongoose model, avoid .lean() in route so tests stay simple
+    const existing = await Ingestion.findOne({ file_hash });
+
+    if (existing && ["processing", "staged", "prod"].includes(existing.status)) {
+      return res.status(409).json({
+        ok: false,
+        message: "Source already ingested or processing",
+        file_hash,
+        status: existing.status,
+        last_processed_page: existing.last_processed_page ?? 0,
+      });
+    }
 
     logger.info(`Uploading PDF to S3: ${file.originalname}`);
 
@@ -56,6 +61,28 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
 
     logger.info(`PDF uploaded to S3: s3://${bucket}/${key}`);
 
+    const lastPage =
+      existing?.status === "failed"
+        ? existing.last_processed_page || 0
+        : existing?.last_processed_page || 0;
+
+    await Ingestion.findOneAndUpdate(
+      { file_hash },
+      {
+        $set: {
+          file_hash,
+          source_file: file.originalname,
+          status: "processing",
+          qdrant_collection: config.QDRANT_COLLECTION,
+          last_error: "",
+        },
+        $setOnInsert: {
+          last_processed_page: lastPage,
+        },
+      },
+      { upsert: true, new: true }
+    );
+
     if (isTest || !queueAI) {
       return res.status(202).json({
         ok: true,
@@ -63,9 +90,13 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
         status: "queued",
         source_file: file.originalname,
         domain: cleanDomain,
+        file_hash,
         testMode: true,
       });
     }
+
+    const jobId = file_hash;
+
     logger.info("Queue isReady start...");
     await queueAI.waitUntilReady();
     logger.info("Queue isReady done.");
@@ -75,6 +106,7 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
       {
         taskType: "document-training",
         payload: {
+          file_hash,
           s3Bucket: bucket,
           s3Key: key,
           domain: cleanDomain,
@@ -92,7 +124,7 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
         removeOnFail: false,
       }
     );
-    
+
     logger.info(`Training job queued successfully: ${jobId}`);
 
     return res.status(202).json({
@@ -101,6 +133,7 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
       status: "queued",
       source_file: file.originalname,
       domain: cleanDomain,
+      file_hash,
     });
   } catch (err) {
     logger.error(`Training failed: ${err.message}`);

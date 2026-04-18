@@ -4,6 +4,7 @@ const { connection } = require("../config/queue");
 const { logger } = require("../utils/logger");
 const metrics = require("./prometheusMetrics");
 const { releaseSummLock } = require("../memory/rawRagMemory");
+const Ingestion = require("../models/ingestion.model");
 
 const isUnitTest = process.env.IS_UNIT_TEST === "1";
 const isE2eTest = process.env.E2E_TEST === "1";
@@ -22,24 +23,73 @@ async function processor(job) {
     if (taskType === "document-training") {
       const { trainDocument } = require("../services/ingest.service");
       const { downloadPdfFromS3, cleanupTempDir } = require("../utils/s3Download");
-      const { s3Bucket, s3Key, source_file, domain } = payload;
+      const { s3Bucket, s3Key, source_file, domain, file_hash } = payload;
+
+      if (!file_hash) throw new Error("Missing file_hash in job payload");
+
+      const doc = await Ingestion.findOne({ file_hash });
+      if(!doc) throw new Error(`Ingestion doc not found for file_hash=${file_hash}`);
+
+      const startPage = (doc.last_processed_page || 0) + 1;
+      logger.info(`[INGEST] resume file_hash=${file_hash} startPage=${startPage} status=${doc.status}`);
 
       let tempDir;
       try {
         const download = await downloadPdfFromS3({ bucket: s3Bucket, key: s3Key });
         tempDir = download.tempDir;
 
-        return await trainDocument({
+        const result = await trainDocument({
           pdfPath: download.filePath,
           source_file,
           domain,
+          file_hash,
+          startPage,
           job,
         });
+
+        await Ingestion.findOneAndUpdate(
+          { file_hash },
+          { $set: { status: "staged", total_pages: result.total_pages } }
+        );
+        return result;
+      } catch (err) {
+        await Ingestion.findOneAndUpdate(
+          { file_hash },
+          { $set: { status: "failed", last_error: String(err.message || err).slice(0, 500) } }
+        );
+        throw err;
       } finally {
         if (tempDir) cleanupTempDir(tempDir);
       }
     }
+/*
+if (result?.ok && result?.doc_id && queueAI) {
+          const enrichJobId = `enrich:${source_file}:${Date.now()}`;
 
+          await queueAI.add(
+            "ai-tasks",
+            {
+              taskType: "post-enrich-metadata",
+              payload: {
+                docId: result.doc_id,
+                source_file,
+                domain,
+              },
+            },
+            {
+              jobId: enrichJobId,
+              attempts: 3,
+              backoff: {
+                type: "exponential",
+                delay: 2000,
+              },
+              removeOnComplete: 100,
+              removeOnFail: false,
+            }
+          );
+          logger.info(`[ENRICH] queued job=${enrichJobId} doc_id=${result.doc_id}`);
+        }
+*/
     if (taskType === "small-summary") {
       const { domain } = payload;
 
@@ -162,6 +212,13 @@ async function processor(job) {
       return { ok: true };
     }
 
+    if (taskType === "post-enrich-metadata") {
+      const { doc_id, source_file } = payload;
+      const { postEnrichMetadata } = require("../services/ingest.service");
+
+      return await postEnrichMetadata({ doc_id, source_file });
+    }
+
     throw new Error(`Unknown task type: ${taskType}`);
   } finally {
     metrics.bullActive.dec();
@@ -184,7 +241,9 @@ function startAiWorker() {
   const worker = new Worker("ai-tasks", processor, {
     connection,
     concurrency: 1,
-    lockDuration: 20 * 60 * 1000, // 20 min
+    lockDuration: 30 * 60 * 1000,
+    stalledInterval: 30 * 1000,
+    maxStalledCount: 1,
     lockRenewTime: 30 * 1000,
   });
 
