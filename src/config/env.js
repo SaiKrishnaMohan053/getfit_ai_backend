@@ -33,7 +33,7 @@ const config = {
   AWS_REGION: process.env.AWS_REGION || "us-east-1",
   AWS_TRAINING_BUCKET: process.env.AWS_TRAINING_BUCKET || "getfit-ai-training-pdfs",
 
-  DIAGRAM_SERVICE_URL: process.env.DIAGRAM_SERVICE_URL,
+  DIAGRAM_SERVICE_URL: process.env.DIAGRAM_SERVICE_URL || "http://localhost:8000",
 };
 
 /**
@@ -44,8 +44,11 @@ const requiredVars = [
   "QDRANT_URL",
   "OPENAI_API_KEY",
   "AWS_TRAINING_BUCKET",
-  "DIAGRAM_SERVICE_URL",
 ];
+
+if (process.env.NODE_ENV !== "test") {
+  requiredVars.push("DIAGRAM_SERVICE_URL");
+}
 
 for (const key of requiredVars) {
   if (!config[key]) {
