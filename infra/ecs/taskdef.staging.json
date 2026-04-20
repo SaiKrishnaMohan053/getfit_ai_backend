@@ -24,7 +24,7 @@
           "containerPort": 8080,
           "protocol": "tcp"
         }
-      ],
+      ], 
 
       "environment": [
         { "name": "NODE_ENV", "value": "production" },
