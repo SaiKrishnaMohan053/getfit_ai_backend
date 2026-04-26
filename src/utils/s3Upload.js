@@ -29,7 +29,7 @@ async function uploadPdfToS3({ bucket, buffer, fileName, file_hash, ContentType 
   if(!bucket || typeof bucket !== "string") {
     throw new Error(`Invalid S3 bucket name: ${bucket}`);
   }
-  if (!buffer.isBuffer(buffer)) {
+  if (!Buffer.isBuffer(buffer)) {
     throw new Error(`Invalid PDF buffer. type=${typeof buffer}`);
   }
 
