@@ -26,10 +26,13 @@ async function uploadPdfToS3({ bucket, buffer, fileName, file_hash, ContentType 
   if(!file_hash) {
     throw new Error("file_hash is required for deterministic s3 upload");
   }
-  if (!buffer || typeof buffer !== "string") {
+  if(!bucket || typeof bucket !== "string") {
+    throw new Error(`Invalid S3 bucket name: ${bucket}`);
+  }
+  if (!buffer.isBuffer(buffer)) {
     throw new Error(`Invalid PDF buffer. type=${typeof buffer}`);
   }
-  
+
   const key = `training-pdfs/${file_hash}/original.pdf`;
 
   const exists = await s3ObjectExists(bucket, key);
