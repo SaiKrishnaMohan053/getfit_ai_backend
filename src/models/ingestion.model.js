@@ -19,6 +19,4 @@ const ingestionSchema = new mongoose.Schema(
   { timestamps: { createdAt: "started_at", updatedAt: "updated_at" } }
 );
 
-ingestionSchema.index({ file_hash: 1 }, { unique: true });
-
 module.exports = mongoose.model("Ingestion", ingestionSchema);
