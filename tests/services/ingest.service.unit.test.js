@@ -1,5 +1,7 @@
 // tests/services/ingest.service.unit.test.js
 
+const crypto = require("crypto");
+
 jest.mock("fs", () => ({
   readFileSync: jest.fn(() => Buffer.from("mock pdf bytes")),
 }));
@@ -71,6 +73,10 @@ const { trainDocument } = require("../../src/services/ingest.service");
 
 jest.setTimeout(20000);
 
+function buildExpectedPointId(...parts) {
+  return crypto.createHash("sha256").update(parts.join(":")).digest("hex");
+}
+
 describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
   const file_hash = "filehash123";
 
@@ -126,13 +132,14 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
       { file_hash },
       { $set: { last_processed_page: 1, total_pages: 2 } }
     );
+
     expect(Ingestion.findOneAndUpdate).toHaveBeenCalledWith(
       { file_hash },
       { $set: { last_processed_page: 2, total_pages: 2 } }
     );
   });
 
-  it("ingests one page with deterministic Qdrant IDs", async () => {
+  it("ingests one page with deterministic hashed Qdrant IDs", async () => {
     extractPdfStructure.mockResolvedValue({
       pages: [
         {
@@ -176,7 +183,10 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
 
     embedText
       .mockResolvedValueOnce([[0.01, 0.02]]) // page index
-      .mockResolvedValueOnce([[0.1, 0.2], [0.3, 0.4]]) // text chunks
+      .mockResolvedValueOnce([
+        [0.1, 0.2],
+        [0.3, 0.4],
+      ]) // text chunks
       .mockResolvedValueOnce([[0.9, 0.9]]) // diagram 1
       .mockResolvedValueOnce([[0.8, 0.8]]); // diagram 2
 
@@ -192,23 +202,46 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
 
     expect(qdrantClient.upsert).toHaveBeenCalledTimes(4);
 
-    // page index deterministic id
-    expect(qdrantClient.upsert.mock.calls[0][1].points[0].id).toBe(
-      `${file_hash}:p1:index`
+    const indexPoint = qdrantClient.upsert.mock.calls[0][1].points[0];
+    expect(indexPoint.id).toBe(
+      buildExpectedPointId(file_hash, "p", 1, "index")
     );
+    expect(indexPoint.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(indexPoint.payload.file_hash).toBe(file_hash);
+    expect(indexPoint.payload.object_type).toBe("page_index");
 
-    // text chunk deterministic ids
     const textPoints = qdrantClient.upsert.mock.calls[1][1].points;
-    expect(textPoints[0].id).toBe(`${file_hash}:p1:c0`);
-    expect(textPoints[1].id).toBe(`${file_hash}:p1:c1`);
 
-    // diagram deterministic ids
-    expect(qdrantClient.upsert.mock.calls[2][1].points[0].id).toBe(
-      `${file_hash}:p1:dd1`
+    expect(textPoints[0].id).toBe(
+      buildExpectedPointId(file_hash, "p", 1, "chunk", 0)
     );
-    expect(qdrantClient.upsert.mock.calls[3][1].points[0].id).toBe(
-      `${file_hash}:p1:dd2`
+    expect(textPoints[1].id).toBe(
+      buildExpectedPointId(file_hash, "p", 1, "chunk", 1)
     );
+
+    expect(textPoints[0].id).toMatch(/^[a-f0-9]{64}$/);
+    expect(textPoints[1].id).toMatch(/^[a-f0-9]{64}$/);
+    expect(textPoints[0].id).not.toBe(textPoints[1].id);
+    expect(textPoints[0].payload.file_hash).toBe(file_hash);
+    expect(textPoints[1].payload.file_hash).toBe(file_hash);
+    expect(textPoints[0].payload.object_type).toBe("text_chunk");
+
+    const diagramPoint1 = qdrantClient.upsert.mock.calls[2][1].points[0];
+    const diagramPoint2 = qdrantClient.upsert.mock.calls[3][1].points[0];
+
+    expect(diagramPoint1.id).toBe(
+      buildExpectedPointId(file_hash, "p", 1, "diagram", "d1")
+    );
+    expect(diagramPoint2.id).toBe(
+      buildExpectedPointId(file_hash, "p", 1, "diagram", "d2")
+    );
+
+    expect(diagramPoint1.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(diagramPoint2.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(diagramPoint1.id).not.toBe(diagramPoint2.id);
+    expect(diagramPoint1.payload.file_hash).toBe(file_hash);
+    expect(diagramPoint2.payload.file_hash).toBe(file_hash);
+    expect(diagramPoint1.payload.object_type).toBe("diagram_chunk");
 
     expect(result.ok).toBe(true);
     expect(result.source_file).toBe("onepage.pdf");
@@ -228,16 +261,20 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
       pages: [
         {
           page_number: 1,
-          text_blocks: [{
-            text: "Page 1 has enough text too, but it should be skipped because startPage is set to 2 in this test case."
-          }],
+          text_blocks: [
+            {
+              text: "Page 1 has enough text too, but it should be skipped because startPage is set to 2 in this test case.",
+            },
+          ],
           diagrams: [],
         },
         {
           page_number: 2,
-          text_blocks: [{
-            text: "Page 2 has enough text to process because this sentence is definitely longer than fifty characters."
-          }],
+          text_blocks: [
+            {
+              text: "Page 2 has enough text to process because this sentence is definitely longer than fifty characters.",
+            },
+          ],
           diagrams: [],
         },
       ],
@@ -250,6 +287,7 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
     });
 
     chunkText.mockReturnValue(["chunk p2"]);
+
     tagChunk.mockResolvedValue([
       {
         domain: "training",
@@ -275,16 +313,21 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
     });
 
     expect(result.ok).toBe(true);
-
-    // only page 2 index + page 2 text batch
     expect(qdrantClient.upsert).toHaveBeenCalledTimes(2);
 
-    expect(qdrantClient.upsert.mock.calls[0][1].points[0].id).toBe(
-      `${file_hash}:p2:index`
+    const resumeIndexPoint = qdrantClient.upsert.mock.calls[0][1].points[0];
+    const resumeChunkPoint = qdrantClient.upsert.mock.calls[1][1].points[0];
+
+    expect(resumeIndexPoint.id).toBe(
+      buildExpectedPointId(file_hash, "p", 2, "index")
     );
-    expect(qdrantClient.upsert.mock.calls[1][1].points[0].id).toBe(
-      `${file_hash}:p2:c0`
+    expect(resumeChunkPoint.id).toBe(
+      buildExpectedPointId(file_hash, "p", 2, "chunk", 0)
     );
+
+    expect(resumeIndexPoint.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(resumeChunkPoint.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(resumeIndexPoint.id).not.toBe(resumeChunkPoint.id);
 
     expect(Ingestion.findOneAndUpdate).toHaveBeenCalledWith(
       { file_hash },
@@ -310,6 +353,7 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
     });
 
     chunkText.mockReturnValue([]);
+
     embedText
       .mockResolvedValueOnce([[0.01]]) // index
       .mockResolvedValueOnce([[0.99]]); // diagram
