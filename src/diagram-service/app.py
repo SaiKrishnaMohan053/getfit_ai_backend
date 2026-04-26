@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile
 from pydantic import BaseModel
 import fitz  # PyMuPDF
 import os
-import uuid
+import hashlib
 import boto3
 from typing import List
 
@@ -56,7 +56,8 @@ async def extract_pdf(file: UploadFile):
             base_image = doc.extract_image(xref)
             image_bytes = base_image["image"]
 
-            diagram_id = f"p{page_index+1}_x{xref}"
+            image_hash = hashlib.sha256(image_bytes).hexdigest()
+            diagram_id = f"p{page_index + 1}_{image_hash}"
             key = f"diagram-crops/{diagram_id}.png"
 
             s3.put_object(
