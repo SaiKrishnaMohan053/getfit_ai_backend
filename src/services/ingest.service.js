@@ -1,8 +1,12 @@
 // src/services/ingest.service.js
 
 const fs = require("fs");
-const path = require("path");
-const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
+
+function buildPointId(...parts) {
+  const raw = parts.join(":");
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
 
 const Ingestion = require("../models/ingestion.model");
 const { extractPdfStructure } = require("./extractPdfStructure.service");
@@ -109,7 +113,7 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job, f
 
       totalEmbedded += indexVector.length;
 
-      const pageIndexId = `${file_hash}:p${pageNumber}:index`;
+      const pageIndexId = buildPointId(file_hash, "p", pageNumber, "index");
 
       await qdrantClient.upsert(config.QDRANT_COLLECTION, {
         points: [
@@ -176,7 +180,7 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job, f
           };
 
           return {
-            id: `${file_hash}:p${pageNumber}:c${chunkIndex}`,
+            id: buildPointId(file_hash, "p", pageNumber, "chunk", chunkIndex),
             vector: vectors[idx],
             payload: {
               object_type: "text_chunk",
@@ -237,7 +241,7 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job, f
 
           totalEmbedded += diagramVector.length;
 
-          const diagramPointId = `${file_hash}:p${pageNumber}:d${stableDiagramId}`
+          const diagramPointId = buildPointId(file_hash, "p", pageNumber, "diagram", stableDiagramId);
 
           await withRetry(async () => {
             const startHr = process.hrtime();
@@ -250,6 +254,7 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job, f
                     payload: {
                       object_type: "diagram_chunk",
                       source_type: "diagram",
+                      file_hash,
                       doc_id,
                       book_title,
                       category,

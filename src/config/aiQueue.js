@@ -212,12 +212,12 @@ if (result?.ok && result?.doc_id && queueAI) {
       return { ok: true };
     }
 
-    if (taskType === "post-enrich-metadata") {
+    /*if (taskType === "post-enrich-metadata") {
       const { doc_id, source_file } = payload;
       const { postEnrichMetadata } = require("../services/ingest.service");
 
       return await postEnrichMetadata({ doc_id, source_file });
-    }
+    }*/
 
     throw new Error(`Unknown task type: ${taskType}`);
   } finally {
