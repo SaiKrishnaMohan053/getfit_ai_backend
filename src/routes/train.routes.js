@@ -33,6 +33,10 @@ async function removeExistingBullJob(file_hash) {
 
   const state = await oldJob.getState();
 
+  logger.info(
+    `[INGEST][QUEUE] existing BullMQ job found file_hash=${file_hash} state=${state} attemptsMade=${oldJob.attemptsMade} failedReason=${oldJob.failedReason || ""}`
+  );
+
   if (state === "active") {
     throw new Error("Existing job is currently active.");
   }
@@ -149,7 +153,9 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
     await queueAI.waitUntilReady();
     logger.info("Queue isReady done.");
 
-    await queueAI.add(
+    await removeExistingBullJob(file_hash);
+
+    const job = await queueAI.add(
       "document-training",
       {
         taskType: "document-training",
@@ -178,6 +184,8 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
         },
       }
     );
+
+    const state = await job.getState();
 
     logger.info(`Training job queued successfully: ${jobId}`);
 
