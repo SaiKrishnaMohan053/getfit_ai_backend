@@ -74,7 +74,19 @@ const { trainDocument } = require("../../src/services/ingest.service");
 jest.setTimeout(20000);
 
 function buildExpectedPointId(...parts) {
-  return crypto.createHash("sha256").update(parts.join(":")).digest("hex");
+  const hash = crypto
+    .createHash("sha256")
+    .update(parts.join(":"))
+    .digest("hex");
+
+  return [
+    hash.slice(0, 8),
+    hash.slice(8, 12),
+    "4" + hash.slice(13, 16),
+    ((parseInt(hash.slice(16, 17), 16) & 0x3) | 0x8).toString(16) +
+      hash.slice(17, 20),
+    hash.slice(20, 32),
+  ].join("-");
 }
 
 describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
@@ -206,7 +218,9 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
     expect(indexPoint.id).toBe(
       buildExpectedPointId(file_hash, "p", 1, "index")
     );
-    expect(indexPoint.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(indexPoint.id).toMatch(
+      /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
+    );
     expect(indexPoint.payload.file_hash).toBe(file_hash);
     expect(indexPoint.payload.object_type).toBe("page_index");
 
@@ -219,8 +233,8 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
       buildExpectedPointId(file_hash, "p", 1, "chunk", 1)
     );
 
-    expect(textPoints[0].id).toMatch(/^[a-f0-9]{64}$/);
-    expect(textPoints[1].id).toMatch(/^[a-f0-9]{64}$/);
+    expect(textPoints[0].id).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+    expect(textPoints[1].id).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
     expect(textPoints[0].id).not.toBe(textPoints[1].id);
     expect(textPoints[0].payload.file_hash).toBe(file_hash);
     expect(textPoints[1].payload.file_hash).toBe(file_hash);
@@ -236,8 +250,8 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
       buildExpectedPointId(file_hash, "p", 1, "diagram", "d2")
     );
 
-    expect(diagramPoint1.id).toMatch(/^[a-f0-9]{64}$/);
-    expect(diagramPoint2.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(diagramPoint1.id).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+    expect(diagramPoint2.id).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
     expect(diagramPoint1.id).not.toBe(diagramPoint2.id);
     expect(diagramPoint1.payload.file_hash).toBe(file_hash);
     expect(diagramPoint2.payload.file_hash).toBe(file_hash);
@@ -325,8 +339,8 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
       buildExpectedPointId(file_hash, "p", 2, "chunk", 0)
     );
 
-    expect(resumeIndexPoint.id).toMatch(/^[a-f0-9]{64}$/);
-    expect(resumeChunkPoint.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(resumeIndexPoint.id).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+    expect(resumeChunkPoint.id).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
     expect(resumeIndexPoint.id).not.toBe(resumeChunkPoint.id);
 
     expect(Ingestion.findOneAndUpdate).toHaveBeenCalledWith(
