@@ -5,6 +5,7 @@ const { logger } = require("../utils/logger");
 const metrics = require("./prometheusMetrics");
 const { releaseSummLock } = require("../memory/rawRagMemory");
 const Ingestion = require("../models/ingestion.model");
+const { config } = require("../config/env");
 
 const isUnitTest = process.env.IS_UNIT_TEST === "1";
 const isE2eTest = process.env.E2E_TEST === "1";
@@ -225,6 +226,11 @@ if (result?.ok && result?.doc_id && queueAI) {
   }
 }
 
+const workerConcurrency = Math.min(
+  Math.max(Number(config.INGEST_WORKER_CONCURRENCY || 5), 1),
+  5
+);
+
 function startAiWorker() {
   if (isUnitTest) {
     logger.info("BullMQ worker disabled (UNIT TEST MODE)");
@@ -240,12 +246,14 @@ function startAiWorker() {
 
   const worker = new Worker("ai-tasks", processor, {
     connection,
-    concurrency: 1,
+    concurrency: workerConcurrency,
     lockDuration: 30 * 60 * 1000,
     stalledInterval: 30 * 1000,
     maxStalledCount: 1,
     lockRenewTime: 30 * 1000,
   });
+
+  logger.info(`BullMQ worker started successfully | concurrency=${workerConcurrency}`);
 
   worker.on("completed", () => metrics.bullCompleted.inc());
   worker.on("failed", (job, err) => {

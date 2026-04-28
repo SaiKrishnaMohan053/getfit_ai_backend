@@ -200,7 +200,7 @@ router.post("/", upload.single("pdf"), async (req, res, next) => {
     });
   } catch (err) {
     logger.error(`Training failed: ${err.message}`);
-    if(err.message === "Existing ingestion job is currently active") {
+    if(err.message === "Existing job is currently active.") {
       return res.status(409).json({
         ok: false,
         message: "Source already ingested or processing",

@@ -33,8 +33,10 @@ const {
   qdrantLatency,
 } = require("../config/prometheusMetrics");
 
-const BATCH_SIZE = 50;
-const TAG_BATCH_SIZE = 4;
+const BATCH_SIZE = Number(config.INGEST_EMBED_BATCH_SIZE || 32);
+const TAG_BATCH_SIZE = Number(config.INGEST_TAG_BATCH_SIZE || 8);
+const CHUNK_MAX_CHARS = Number(config.INGEST_CHUNK_MAX_CHARS || 1800);
+const CHUNK_OVERLAP_CHARS = Number(config.INGEST_CHUNK_OVERLAP_CHARS || 150);
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 600;
 
@@ -156,7 +158,10 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job, f
       // 2️⃣ TEXT CHUNKS
       // ----------------------
 
-      const chunks = chunkText(pageText);
+      const chunks = hasText ? chunkText(pageText, {
+        maxChars: CHUNK_MAX_CHARS,
+        overlapChars: CHUNK_OVERLAP_CHARS,
+      }) : [];
 
       for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
         const batch = chunks.slice(i, i + BATCH_SIZE);
@@ -220,7 +225,7 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job, f
           try {
             await qdrantClient.upsert(config.QDRANT_COLLECTION, {
               points,
-              wait: true,
+              wait: false,
             });
 
             qdrantRequests.inc({ operation: "upsert", status: "success" });
@@ -277,7 +282,7 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job, f
                     }
                   }
                 ],
-                wait: true
+                wait: false
               });
 
               qdrantRequests.inc({ operation: "upsert", status: "success" });

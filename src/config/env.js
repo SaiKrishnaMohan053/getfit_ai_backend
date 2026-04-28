@@ -34,6 +34,12 @@ const config = {
   AWS_TRAINING_BUCKET: process.env.AWS_TRAINING_BUCKET || "getfit-ai-training-pdfs",
 
   DIAGRAM_SERVICE_URL: process.env.DIAGRAM_SERVICE_URL || "http://localhost:8000",
+
+  INGEST_WORKER_CONCURRENCY: Number(process.env.INGEST_WORKER_CONCURRENCY || 5),
+  INGEST_EMBED_BATCH_SIZE: Number(process.env.INGEST_EMBED_BATCH_SIZE || 32),
+  INGEST_TAG_BATCH_SIZE: Number(process.env.INGEST_TAG_BATCH_SIZE || 8),
+  INGEST_CHUNK_MAX_CHARS: Number(process.env.INGEST_CHUNK_MAX_CHARS || 1800),
+  INGEST_CHUNK_OVERLAP_CHARS: Number(process.env.INGEST_CHUNK_OVERLAP_CHARS || 150),
 };
 
 /**

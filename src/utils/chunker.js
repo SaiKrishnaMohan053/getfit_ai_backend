@@ -16,10 +16,10 @@ function splitByChars(text, maxChars, overlapChars = 200) {
 
 function chunkText(text, opts = {}) {
   const {
-    maxChars = 2500,
+    maxChars = 1800,
     overlapSentences = 1,
     minChars = 400,
-    overlapChars = 200,
+    overlapChars = 150,
   } = opts;
 
   if (!text || typeof text !== "string") return [];
