@@ -142,7 +142,7 @@ describe("SERVICE: trainDocument (idempotent page-index + diagrams)", () => {
 
     expect(Ingestion.findOneAndUpdate).toHaveBeenCalledWith(
       { file_hash },
-      { $set: { last_processed_page: 1, total_pages: 2 } }
+      { $set: { last_processed_page: 2, total_pages: 2 } }
     );
 
     expect(Ingestion.findOneAndUpdate).toHaveBeenCalledWith(

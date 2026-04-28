@@ -20,7 +20,15 @@ Return JSON only:
     ]
   });
 
-  return JSON.parse(completion.choices[0].message.content);
+  try {
+    return JSON.parse(completion.choices[0].message.content);
+  } catch {
+    return {
+      page_title: "Untitled Page",
+      page_summary: pageText.slice(0, 500),
+      page_topics: []
+    }
+  }
 }
 
 module.exports = { buildPageIndex };

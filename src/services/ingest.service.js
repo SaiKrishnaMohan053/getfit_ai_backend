@@ -13,56 +13,41 @@ function buildPointId(...parts) {
     hash.slice(0, 8),
     hash.slice(8, 12),
     "4" + hash.slice(13, 16),
-    ((parseInt(hash.slice(16, 17), 16) & 0x3) | 0x8).toString(16) + hash.slice(17, 20),
+    ((parseInt(hash.slice(16, 17), 16) & 0x3) | 0x8).toString(16) +
+      hash.slice(17, 20),
     hash.slice(20, 32),
   ].join("-");
 }
 
 const Ingestion = require("../models/ingestion.model");
 const { extractPdfStructure } = require("./extractPdfStructure.service");
-const { buildPageIndex } = require("./pageIndexBuilder.service");
-const { chunkText } = require("../utils/chunker");
-const { embedText } = require("../utils/embedding");
 const { buildDocId } = require("../utils/docId");
-const { qdrantClient } = require("../config/qdrantClient");
-const { tagChunk } = require("../utils/chunkTagger");
 const { config } = require("../config/env");
 const { logger } = require("../utils/logger");
-const {
-  qdrantRequests,
-  qdrantLatency,
-} = require("../config/prometheusMetrics");
+const { processSinglePage } = require("./processSinglePage.service");
 
-const BATCH_SIZE = Number(config.INGEST_EMBED_BATCH_SIZE || 32);
-const TAG_BATCH_SIZE = Number(config.INGEST_TAG_BATCH_SIZE || 8);
-const CHUNK_MAX_CHARS = Number(config.INGEST_CHUNK_MAX_CHARS || 1800);
-const CHUNK_OVERLAP_CHARS = Number(config.INGEST_CHUNK_OVERLAP_CHARS || 150);
-const MAX_RETRIES = 3;
-const RETRY_BASE_MS = 600;
+const PAGE_CONCURRENCY = Math.min(
+  Math.max(Number(config.INGEST_PAGE_CONCURRENCY || 3), 1),
+  5
+);
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function withRetry(fn, label) {
-  for (let i = 1; i <= MAX_RETRIES; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (i === MAX_RETRIES) throw err;
-      const wait = RETRY_BASE_MS * Math.pow(2, i - 1);
-      logger.warn(`${label} failed (retry ${i})`);
-      await sleep(wait);
-    }
-  }
-}
-
-async function trainDocument({ pdfPath, domain, source_file, version_tag, job, file_hash, startPage = 1 }) {
+async function trainDocument({
+  pdfPath,
+  domain,
+  source_file,
+  version_tag,
+  job,
+  file_hash,
+  startPage = 1,
+}) {
   const start = Date.now();
 
   const vtag =
-    version_tag ||
-    new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    version_tag || new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
 
-  logger.info(`Training started: ${source_file}`);
+  logger.info(
+    `[INGEST] training started source=${source_file} startPage=${startPage} pageConcurrency=${PAGE_CONCURRENCY}`
+  );
 
   async function setProgress(pct, stage) {
     if (!job || typeof job.updateProgress !== "function") return;
@@ -84,236 +69,90 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job, f
     }
 
     const total_pages = pages.length;
+    const TAG_VERSION = "v1-fixed-subdomains";
 
     let totalInserted = 0;
     let totalEmbedded = 0;
 
-    const TAG_VERSION = "v1-fixed-subdomains";
+    const pagesToProcess = pages.filter(
+      (page) => page.page_number >= startPage
+    );
 
-    for (let p = 0; p < pages.length; p++) {
-      const page = pages[p];
-      const pageNumber = page.page_number;
-
-      if (pageNumber < startPage) continue;
-
-      const pageText = page.text_blocks
-        ?.map((b) => b.text)
-        .join(" ")
-        .trim();
-
-      const hasText = pageText && pageText.length >= 50;
-      const hasDiagrams = page.diagrams && page.diagrams.length > 0;
-
-      if (!hasText && !hasDiagrams) {
-        await Ingestion.findOneAndUpdate(
-          { file_hash },
-          { $set: { last_processed_page: pageNumber, total_pages }}
-        );
-        continue;
-      };
-
-      // ----------------------
-      // 1️⃣ PAGE INDEX VECTOR
-      // ----------------------
-
-      const safeText = hasText ? pageText : `Diagram-only content on page ${pageNumber}`;
-      const indexData = await buildPageIndex({ pageText: safeText });
-
-      const indexVector = await embedText(
-        indexData.page_title + "\n" + indexData.page_summary
+    if (pagesToProcess.length === 0) {
+      logger.info(
+        `[INGEST] no pages to process file_hash=${file_hash} startPage=${startPage}`
       );
 
-      totalEmbedded += indexVector.length;
+      return {
+        ok: true,
+        doc_id,
+        file_hash,
+        source_file,
+        domain,
+        version_tag: vtag,
+        inserted: 0,
+        embedded: 0,
+        seconds: "0.00",
+        total_pages,
+        collection: config.QDRANT_COLLECTION,
+      };
+    }
 
-      const pageIndexId = buildPointId(file_hash, "p", pageNumber, "index");
+    for (let i = 0; i < pagesToProcess.length; i += PAGE_CONCURRENCY) {
+      const pageBatch = pagesToProcess.slice(i, i + PAGE_CONCURRENCY);
 
-      await qdrantClient.upsert(config.QDRANT_COLLECTION, {
-        points: [
-          {
-            id: pageIndexId,
-            vector: indexVector[0],
-            payload: {
-              object_type: "page_index",
-              source_type: "index",
-              file_hash,
-              doc_id,
-              book_title,
-              category,
-              source_file,
-              page_number: pageNumber,
-              page_title: indexData.page_title,
-              page_summary: indexData.page_summary,
-              page_topics: indexData.page_topics || [],
-              version_tag: vtag,
-              created_at: new Date().toISOString(),
-            },
-          },
-        ],
-        wait: true,
-      });
+      logger.info(
+        `[INGEST] processing page batch ${pageBatch
+          .map((p) => p.page_number)
+          .join(",")}`
+      );
 
-      totalInserted++;
-
-      // ----------------------
-      // 2️⃣ TEXT CHUNKS
-      // ----------------------
-
-      const chunks = hasText ? chunkText(pageText, {
-        maxChars: CHUNK_MAX_CHARS,
-        overlapChars: CHUNK_OVERLAP_CHARS,
-      }) : [];
-
-      for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-        const batch = chunks.slice(i, i + BATCH_SIZE);
-
-        const tags = [];
-        for (let t = 0; t < batch.length; t += TAG_BATCH_SIZE) {
-          const tagSlice = batch.slice(t, t + TAG_BATCH_SIZE);
-          const tagResults = await tagChunk({
-            chunks: tagSlice,
+      const results = await Promise.all(
+        pageBatch.map((page) =>
+          processSinglePage({
+            page,
+            file_hash,
+            doc_id,
+            book_title,
+            category,
             source_file,
-          });
-          tags.push(...tagResults);
-        }
+            vtag,
+            TAG_VERSION,
+            buildPointId,
+          })
+        )
+      );
 
-        const vectors = await withRetry(
-          () => embedText(batch),
-          "Embedding batch"
-        );
+      totalInserted += results.reduce((sum, r) => sum + r.inserted, 0);
+      totalEmbedded += results.reduce((sum, r) => sum + r.embedded, 0);
 
-        totalEmbedded += vectors.length;
-
-        const points = batch.map((chunk, idx) => {
-          const chunkIndex = i + idx;
-          
-          const tag = tags[idx] || {
-            domain: "unknown",
-            subdomain: "unknown",
-            topics: [],
-            confidence: 0,
-            reasons: "missing-tag",
-          };
-
-          return {
-            id: buildPointId(file_hash, "p", pageNumber, "chunk", chunkIndex),
-            vector: vectors[idx],
-            payload: {
-              object_type: "text_chunk",
-              source_type: "text",
-              text: chunk,
-              file_hash,
-              doc_id,
-              book_title,
-              category,
-              source_file,
-              page_number: pageNumber,
-              chunk_index_in_page: chunkIndex,
-              domain: tag.domain,
-              subdomain: tag.subdomain,
-              topics: tag.topics,
-              tag_confidence: tag.confidence,
-              tag_reasons: tag.reasons,
-              tag_version: TAG_VERSION,
-              version_tag: vtag,
-              created_at: new Date().toISOString(),
-            },
-          };
-        });
-
-        await withRetry(async () => {
-          const startHr = process.hrtime();
-          try {
-            await qdrantClient.upsert(config.QDRANT_COLLECTION, {
-              points,
-              wait: false,
-            });
-
-            qdrantRequests.inc({ operation: "upsert", status: "success" });
-            qdrantLatency.observe(
-              process.hrtime(startHr)[0] +
-                process.hrtime(startHr)[1] / 1e9
-            );
-          } catch (err) {
-            qdrantRequests.inc({ operation: "upsert", status: "error" });
-            throw err;
-          }
-        }, "Upsert text batch");
-
-        totalInserted += points.length;
-      }
-
-      // ----------------------
-      // 3️⃣ DIAGRAM INGESTION
-      // ----------------------
-
-      if (page.diagrams && page.diagrams.length > 0) {
-
-        for (const diagram of page.diagrams) {
-          const stableDiagramId = diagram.diagram_id;
-
-          const diagramText = `Diagram ${stableDiagramId} on page ${pageNumber} of ${book_title}`;
-          const diagramVector = await embedText([diagramText]);
-
-          totalEmbedded += diagramVector.length;
-
-          const diagramPointId = buildPointId(file_hash, "p", pageNumber, "diagram", stableDiagramId);
-
-          await withRetry(async () => {
-            const startHr = process.hrtime();
-            try {
-              await qdrantClient.upsert(config.QDRANT_COLLECTION, {
-                points: [
-                  {
-                    id: diagramPointId,
-                    vector: diagramVector[0],
-                    payload: {
-                      object_type: "diagram_chunk",
-                      source_type: "diagram",
-                      file_hash,
-                      doc_id,
-                      book_title,
-                      category,
-                      source_file,
-                      page_number: pageNumber,
-                      diagram_id: stableDiagramId,
-                      image_s3_url: diagram.image_s3_url,
-                      version_tag: vtag,
-                      created_at: new Date().toISOString(),
-                    }
-                  }
-                ],
-                wait: false
-              });
-
-              qdrantRequests.inc({ operation: "upsert", status: "success" });
-              qdrantLatency.observe(
-                process.hrtime(startHr)[0] +
-                  process.hrtime(startHr)[1] / 1e9
-              );
-            } catch (err) {
-              qdrantRequests.inc({ operation: "upsert", status: "error" });
-              throw err;
-            }
-          }, "Upsert diagram");
-
-          totalInserted += 1;
-        }
-      }
+      const maxProcessedPage = Math.max(...results.map((r) => r.pageNumber));
 
       await Ingestion.findOneAndUpdate(
         { file_hash },
-        { $set: { last_processed_page: pageNumber, total_pages }}
-      )
+        {
+          $set: {
+            last_processed_page: maxProcessedPage,
+            total_pages,
+          },
+        }
+      );
 
       await setProgress(
-        Math.floor(((p + 1) / pages.length) * 100),
-        `processed-page-${pageNumber}`
+        Math.floor((maxProcessedPage / total_pages) * 100),
+        `processed-page-${maxProcessedPage}`
+      );
+
+      logger.info(
+        `[INGEST] batch complete maxPage=${maxProcessedPage} inserted=${totalInserted} embedded=${totalEmbedded}`
       );
     }
 
     const seconds = ((Date.now() - start) / 1000).toFixed(2);
 
-    logger.info(`Training complete in ${seconds}s file_hash=${file_hash}`);
+    logger.info(
+      `[INGEST] training complete seconds=${seconds} file_hash=${file_hash}`
+    );
 
     return {
       ok: true,
@@ -329,7 +168,7 @@ async function trainDocument({ pdfPath, domain, source_file, version_tag, job, f
       collection: config.QDRANT_COLLECTION,
     };
   } catch (err) {
-    logger.error(`Training failed: ${err.message}`);
+    logger.error(`[INGEST] training failed file_hash=${file_hash}: ${err.message}`);
     throw err;
   }
 }
